@@ -11,6 +11,7 @@
 //  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
+#include "jblas/jit_blas_weight_compression.h"
 #include "jblas_common.hpp"
 
 using namespace jblas;
@@ -45,6 +46,14 @@ using Default = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
     jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<DefaultISA, jblas::gemm::GemmCore_Row_NN_16x64_AMX_BF16,
                                                              jblas::prologue::gemm::ActivationConverterFp32, ProB,
                                                              jblas::epilogue::gemm::AccumulatorWriteBackFp32>,
+    jblas::utils::parallel::Parallel2DGemm>;
+template <template <class GC, JBLAS_ISA ISA> class ProB>
+using PerNFp32Fp32 = jblas::wrapper::gemm_pack_weight::GemmInterfacePackWeight<
+    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<
+        DefaultISA, jblas::gemm::GemmCore_Row_NN_16x64_AMX_BF16,  // MXNXK = 16x64x32
+        jblas::prologue::gemm::ActivationConverterFp32,           // activation fp32->bf16
+        ProB,
+        jblas::epilogue::gemm::AccumulatorWriteBackFp32>,  // output fp32->fp32
     jblas::utils::parallel::Parallel2DGemm>;
 
 }  // namespace amx_bf16
@@ -209,6 +218,13 @@ static JBLAS_CODE jblas_s4fp32perN_f32f32_forward(float* activation, SS4Fp32PerN
       ret = kernel.compute<true, false>({_m, _n, _k, activation, lda, quanA, weiptr, output, ldo, quanA->mZPtr,
                                          quanA->mSPtr, quanA->lds, weiptr->mRPtr, weiptr->mSPtr});
       delete quanA;
+    }
+  } else if (weiptr->mCoreType == GcCompBf16::TYPE) {
+    if (_cd->AMX_BF16()) {
+      using GemmKernel = amx_bf16::PerNFp32Fp32<WeiS4ClipFp32PerN>;
+      static GemmKernel kernel;
+      typename GemmKernel::Arguments args{_m, _n, _k, activation, lda, weiptr, output, ldo, NULL};
+      ret = kernel.compute(args);
     }
   }
   return ret;

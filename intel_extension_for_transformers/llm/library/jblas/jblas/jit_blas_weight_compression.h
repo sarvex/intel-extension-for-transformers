@@ -1039,6 +1039,28 @@ class WeightS4ScaleFp32PerChannelN : public WeightS8ScaleFp32PerChannelN<_GemmCo
     return JblasInvalidParam;
   }
 
+  virtual inline JBLAS_CODE getWeight(utils::bf16** dstptr, int* dststep, int k_size, int n_size, int k_offset,
+                                      int n_offset, const Param& _param) {
+    auto wptr = dynamic_cast<const StorageWeight*>(_param.packedW);
+    if (wptr) {
+      auto NPad = wptr->mNPad;
+      auto KPad = wptr->mKPad;
+      auto bptr = wptr->mWPtr + n_offset * KPad / 2 + k_offset * _GemmCore_T::NTILE / 2;
+      for (int i = 0; i < n_size; i += _GemmCore_T::NTILE) {
+        kernel::wrapper::DecompressKBlockS4FP<utils::bf16>::forward<ISA_T, float, S4_T>(
+            (utils::int4x2*)(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
+            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
+            _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr + n_offset + i,
+            wptr->mZPtr != nullptr ? wptr->mZPtr + n_offset + i : nullptr, k_offset / _GemmCore_T::PACK_ROW,
+            wptr->mBlockSize / _GemmCore_T::PACK_ROW, NPad);
+      }
+      *dststep = k_size;
+      return JblasSuccess;
+    }
+    assert(false);
+    return JblasInvalidParam;
+  }
+
  protected:
   virtual JBLAS_CODE doCompress(const int8_t* srcptr, void* dstptr, int row, int col, int ld_src, int ld_dst) {
     return kernel::wrapper::CompressS8S4<_GemmCore_T::NTILE>::template forward<ISA_T>(

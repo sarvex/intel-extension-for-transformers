@@ -12,6 +12,9 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 #pragma once
+#include "jblas/jit_blas.h"
+#include "jblas/jit_blas_epilogue.h"
+#include "jblas/jit_blas_gemm.h"
 #include "ne_jblas.h"
 #include "jblas/jit_blas_weight_compression.h"
 #include "jblas/jit_blas_transformer.h"
@@ -867,11 +870,19 @@ template <template <class GC, JBLAS_ISA ISA> class ProB, template <JBLAS_ISA ISA
 using DefaultGemmFp32 =
     jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<JblasAMX_BF16, jblas::gemm::GemmCore_Row_NN_16x64_AMX_BF16,
                                                              jblas::prologue::gemm::ActivationConverterFp32, ProB, Epi>;
+template <template <class GC, JBLAS_ISA ISA> class ProB, template <JBLAS_ISA ISA> class Epi>
+using Bf16GemmPerN =
+    jblas::wrapper::gemm_pack_weight::GemmLauncherPackWeight<JblasAMX_BF16, jblas::gemm::GemmCore_Row_NN_16x64_AMX_BF16,
+                                                             jblas::prologue::gemm::ActivationConverterFp32, ProB, Epi>;
 using AddGeluGemmS8KBlock = DefaultGemmFp32<WeiS8Fp32, custom::epilogue::Add_GeluFp32>;
 using AddGemmS8KBlock = DefaultGemmFp32<WeiS8Fp32, custom::epilogue::AddFp32>;
 
 using AddGeluGemmS4KBlock = DefaultGemmFp32<WeiS4ClipFp32, custom::epilogue::Add_GeluFp32>;
 using AddGemmS4KBlock = DefaultGemmFp32<WeiS4ClipFp32, custom::epilogue::AddFp32>;
+using GemmBf16S4ClipPerN = Bf16GemmPerN<WeiS4ClipFp32PerN, jblas::epilogue::gemm::AccumulatorWriteBackFp32>;
+using AddGemmBf16S4ClipPerN = Bf16GemmPerN<WeiS4ClipFp32PerN, custom::epilogue::AddFp32>;
+using AddGeluGemmBf16S4ClipPerN = Bf16GemmPerN<WeiS4ClipFp32PerN, custom::epilogue::Add_GeluFp32>;
+using SiluGemmBf16S4ClipPerN = Bf16GemmPerN<WeiS4ClipFp32PerN, custom::epilogue::SiluFp32>;
 }  // namespace amx_bf16
 }  // namespace kblock
 }  // namespace wrapper

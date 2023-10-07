@@ -273,6 +273,19 @@ JBLAS_CODE jblas_fusion_FFN_SiLu_s4clipfp32pern_f32f32_forward(float* activation
       delete quanA1;
       delete quanA2;
     }
+  } else if (w1ptr->mCoreType == GcCompBf16::TYPE) {
+    if (_cd->AMX_BF16()) {
+      using GemmKernel = custom::wrapper::kblock::amx_bf16::GemmBf16S4ClipPerN;
+      using SiluGemmKernel = custom::wrapper::kblock::amx_bf16::SiluGemmBf16S4ClipPerN;
+      using FusedInter = custom::wrapper::transformer::FFNFusedInterfacePerN<SiluGemmKernel, GemmKernel>;
+      static FusedInter finter;
+      int lda = fin;
+      int ldtmp1 = fmid;
+      int ldtmp2 = fmid;
+      int ldo = fout;
+      ret = finter.compute({seq, fin, fmid, fout, activation, lda, tmp1, ldtmp1, w1ptr, w2ptr, w3ptr, tmp1, ldtmp1,
+                            output, ldo, NULL, tmp2, ldtmp2});
+    }
   }
   return ret;
 }
@@ -685,6 +698,16 @@ JBLAS_CODE jblas_fusion_FFN_Add_GeLu_s4clipfp32pern_f32f32_forward(float* activa
       delete quanA1;
       delete quanA2;
     }
+  } else if (w1tmp->mCoreType == GcCompBf16::TYPE) {
+    using GemmKernel = custom::wrapper::kblock::amx_bf16::AddGemmBf16S4ClipPerN;
+    using GeluGemmKernel = custom::wrapper::kblock::amx_bf16::AddGeluGemmBf16S4ClipPerN;
+    using FusedInter = custom::wrapper::transformer::GeluFusedInterfacePerN<GeluGemmKernel, GemmKernel>;
+    static FusedInter finter;
+    int lda = fin;
+    int ldtmp1 = fmid;
+    int ldo = fout;
+    ret = finter.compute({seq, fin, fmid, fout, activation, lda, tmp1, ldtmp1, w1tmp, w2tmp, tmp1, b1ptr, ldtmp1,
+                          broadcast_bias ? 0 : ldtmp1, output, b2ptr, ldo, broadcast_bias ? 0 : ldo});
   }
   return ret;
 }
