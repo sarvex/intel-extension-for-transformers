@@ -15,7 +15,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-from transformers import AutoConfig
+from transformers import AutoConfig, AutoModelForCausalLM
 from intel_extension_for_transformers.llm.runtime.graph.scripts.convert import convert_model
 import torch
 model_maps = {"gpt_neox": "gptneox"}
@@ -26,6 +26,8 @@ class Model:
         self.model = None
         self.model_type = None
         self.bin_file = None
+        self.config = None
+        self.generate_config = None
         self.generate_round = 0
 
     def __import_package(self, model_name):
@@ -60,9 +62,11 @@ class Model:
         self.module = cpp_model
 
     def init(self, model_name, **kwargs):
-        config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
-        model_type = model_maps.get(config.model_type, config.model_type)
-        if model_type == "chatglm" and "chatglm2" in config._name_or_path:
+        self.config = AutoConfig.from_pretrained(model_name, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(model_name, low_cpu_mem_usage=True, trust_remote_code=True)
+        self.generate_config = model.generate_config
+        model_type = model_maps.get(self.config.model_type, self.config.model_type)
+        if model_type == "chatglm" and "chatglm2" in self.config._name_or_path:
             model_type = "chatglm2"
         self.__import_package(model_type)
 
