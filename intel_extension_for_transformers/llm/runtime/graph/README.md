@@ -78,6 +78,7 @@ streamer = TextStreamer(tokenizer)
 
 model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=woq_config, trust_remote_code=True)
 outputs = model.generate(inputs, streamer=streamer, max_new_tokens=300)
+<<<<<<< HEAD
 ```
 
 To enable StreamingLLM for infinite inference, here is the sample code:
@@ -100,6 +101,11 @@ outputs = model.generate(inputs, streamer=streamer, max_new_tokens=300, ctx_size
 
 ```
 
+=======
+
+```
+
+>>>>>>> parent of 5f4175ad75... update python api readme (#504)
 ### 3. Run LLM with Python Script
 You can run LLM with one-click python script including conversion, quantization and inference.
 ```
