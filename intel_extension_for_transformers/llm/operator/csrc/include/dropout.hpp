@@ -110,4 +110,4 @@ class RandBuffer {
   }
 };
 static RandBuffer rand_generator;
-void dropout(torch::Tensor& output);
+torch::Tensor dropout(torch::Tensor& output);

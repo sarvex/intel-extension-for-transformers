@@ -97,7 +97,7 @@ static void qbits_set_weightonly_workspace(const torch::Tensor& workspace) {
   set_jblas_workspace(const_cast<torch::Tensor*>(&workspace));
 }
 
-static void qbits_dropout_fwd(torch::Tensor& output) { dropout(output); }
+static torch::Tensor qbits_dropout_fwd(torch::Tensor& output) { return dropout(output); }
 
 TORCH_LIBRARY(weight_only_jblasop, m) {
   m.def("qbits_quantize", &qbits_quantize);

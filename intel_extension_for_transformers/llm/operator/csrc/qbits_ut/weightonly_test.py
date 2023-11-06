@@ -108,6 +108,14 @@ torch.ops.load_library("../build/libqbits.so")
 #                             test(m, n, k, blocksize, compute_type,
 #                                  weight_type, trans, bias, src_dt, dst_dt)
 
-a=torch.zeros(10240,dtype=torch.float)
-torch.ops.weight_only_jblasop.qbits_dropout_fwd(a);
-print(a)
+a=torch.zeros(1024,10,dtype=torch.float)
+mask=torch.ops.weight_only_jblasop.qbits_dropout_fwd(a)
+print(mask)
+a=a.reshape(-1)
+b=a<0.8
+count=0
+for i in b:
+    if i:
+        count+=1
+
+print(count/10240)
