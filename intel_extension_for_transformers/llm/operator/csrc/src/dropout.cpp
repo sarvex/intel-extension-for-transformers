@@ -16,13 +16,16 @@ static inline void write_rand(void* data, int thread_idx, int64_t elt_num, int d
       auto ans = _mm512_loadu_ps(data + i * dt_size);
       ans = _mm512_mul_ps(ans, mul_scale);
       _mm512_storeu_ps(data + i * dt_size, ans);
+      _mm512_storeu_ps(mask_ptr + i * dt_size, mul_scale);
     } else {
       auto ans = _mm512_cvtpbh_ps((__m256bh)_mm256_loadu_ps(reinterpret_cast<float*>(data + i * dt_size)));
       ans = _mm512_mul_ps(ans, mul_scale);
       auto bf16_ans = (__m256i)_mm512_cvtneps_pbh(ans);
+      auto bf16_mul_scale = (__m256i)_mm512_cvtneps_pbh(mul_scale);
       _mm256_storeu_epi32(data + i * dt_size, bf16_ans);
+      _mm256_storeu_epi32(mask_ptr + i * dt_size, bf16_mul_scale);
     }
-    _mm512_storeu_ps(mask_ptr + i * dt_size, mul_scale);
+    // _mm512_storeu_ps(mask_ptr + i * dt_size, mul_scale);
   }
   if (i < elt_num) {
     auto randv = rand_generator.gen_randfp(thread_idx);
@@ -35,13 +38,16 @@ static inline void write_rand(void* data, int thread_idx, int64_t elt_num, int d
       ans = _mm512_mask_loadu_ps(ans, ls_mask, data + i * dt_size);
       ans = _mm512_mul_ps(ans, mul_scale);
       _mm512_mask_storeu_ps(data + i * dt_size, ls_mask, ans);
+      _mm512_mask_storeu_ps(mask_ptr + i * dt_size, ls_mask, mul_scale);
     } else {
       auto ans = _mm512_cvtpbh_ps((__m256bh)_mm256_loadu_ps(reinterpret_cast<float*>(data + i * dt_size)));
       ans = _mm512_mul_ps(ans, mul_scale);
       auto bf16_ans = (__m256i)_mm512_cvtneps_pbh(ans);
+      auto bf16_mul_scale = (__m256i)_mm512_cvtneps_pbh(mul_scale);
       _mm256_mask_storeu_epi32(data + i * dt_size, ls_mask, bf16_ans);
+      _mm256_mask_storeu_epi32(mask_ptr + i * dt_size, ls_mask, bf16_mul_scale);
     }
-    _mm512_mask_storeu_ps(mask_ptr + i * dt_size, ls_mask, mul_scale);
+    // _mm512_mask_storeu_ps(mask_ptr + i * dt_size, ls_mask, mul_scale);
   }
 }
 
@@ -49,7 +55,7 @@ torch::Tensor dropout(torch::Tensor& output, double p) {
   auto elt_num = output.numel();
   auto core_num = omp_get_max_threads();
   auto task_each_core = elt_num / core_num;
-  torch::Tensor mask = torch::empty_like(output, torch::kFloat);
+  torch::Tensor mask = torch::empty_like(output);
 #pragma omp parallel
   {
     auto ker_idx = omp_get_thread_num();

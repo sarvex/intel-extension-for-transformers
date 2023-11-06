@@ -114,19 +114,20 @@ import time
 a=torch.rand(11008,4096,dtype=torch.bfloat16)
 b=a.clone()
 t1=time.time()
-mask=torch.ops.weight_only_jblasop.qbits_dropout_fwd(a,0.8)
+mask=torch.ops.weight_only_jblasop.qbits_dropout_fwd(a,0.6)
 print("qbits cost"+str(time.time()-t1)+"s")
-# print(mask)
+print(a)
 # print(a)
 t1=time.time()
-b=torch.dropout(b,0.8,True)
+b=torch.dropout(b,0.6,True)
+print(b)
 print("torch cost"+str(time.time()-t1)+"s")
 # print(b)
 # a=mask.reshape(-1)
-# b=a<5
+# b=a<2.5
 # count=0
 # for i in b:
 #     if i:
 #         count+=1
 
-# print(count/256)
+# print(count/(256))
