@@ -1,4 +1,5 @@
 #include <ctime>
+#include <ATen/core/TensorBody.h>
 #include <immintrin.h>
 #include <iostream>
 #include <omp.h>
@@ -110,4 +111,5 @@ class RandBuffer {
   }
 };
 static RandBuffer rand_generator;
-torch::Tensor dropout(torch::Tensor& output, double p);
+void dropout_bwd(torch::Tensor& grad, torch::Tensor& mask);
+torch::Tensor dropout_fwd(torch::Tensor& output, double p);
