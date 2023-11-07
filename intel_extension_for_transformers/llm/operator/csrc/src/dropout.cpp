@@ -1,6 +1,7 @@
-#include "../include/dropout.hpp"
 #include <ATen/core/TensorBody.h>
 #include <immintrin.h>
+
+#include "../include/dropout.hpp"
 
 template <bool BF16>
 static inline void write_rand(void* data, int thread_idx, int64_t elt_num, int dt_size, double p, void* mask_ptr) {
@@ -23,8 +24,8 @@ static inline void write_rand(void* data, int thread_idx, int64_t elt_num, int d
       ans = _mm512_mul_ps(ans, mul_scale);
       auto bf16_ans = (__m256i)_mm512_cvtneps_pbh(ans);
       auto bf16_mul_scale = (__m256i)_mm512_cvtneps_pbh(mul_scale);
-      _mm256_storeu_epi32(data + i * dt_size, bf16_ans);
-      _mm256_storeu_epi32(mask_ptr + i * dt_size, bf16_mul_scale);
+      _mm256_storeu_epi16(data + i * dt_size, bf16_ans);
+      _mm256_storeu_epi16(mask_ptr + i * dt_size, bf16_mul_scale);
     }
     // _mm512_storeu_ps(mask_ptr + i * dt_size, mul_scale);
   }
@@ -45,8 +46,8 @@ static inline void write_rand(void* data, int thread_idx, int64_t elt_num, int d
       ans = _mm512_mul_ps(ans, mul_scale);
       auto bf16_ans = (__m256i)_mm512_cvtneps_pbh(ans);
       auto bf16_mul_scale = (__m256i)_mm512_cvtneps_pbh(mul_scale);
-      _mm256_mask_storeu_epi32(data + i * dt_size, ls_mask, bf16_ans);
-      _mm256_mask_storeu_epi32(mask_ptr + i * dt_size, ls_mask, bf16_mul_scale);
+      _mm256_mask_storeu_epi16(data + i * dt_size, ls_mask, bf16_ans);
+      _mm256_mask_storeu_epi16(mask_ptr + i * dt_size, ls_mask, bf16_mul_scale);
     }
     // _mm512_mask_storeu_ps(mask_ptr + i * dt_size, ls_mask, mul_scale);
   }
@@ -66,7 +67,7 @@ static inline void mul(void* grad, int thread_idx, int64_t elt_num, int dt_size,
       auto zmm_mask = _mm512_cvtpbh_ps((__m256bh)_mm256_loadu_ps(reinterpret_cast<float*>(mask_ptr + i * dt_size)));
       ans = _mm512_mul_ps(ans, zmm_mask);
       auto bf16_ans = (__m256i)_mm512_cvtneps_pbh(ans);
-      _mm256_storeu_epi32(grad + i * dt_size, bf16_ans);
+      _mm256_storeu_epi16(grad + i * dt_size, bf16_ans);
     }
   }
   if (i < elt_num) {
@@ -82,7 +83,7 @@ static inline void mul(void* grad, int thread_idx, int64_t elt_num, int dt_size,
       auto zmm_mask = _mm512_cvtpbh_ps((__m256bh)_mm256_loadu_ps(reinterpret_cast<float*>(mask_ptr + i * dt_size)));
       ans = _mm512_mul_ps(ans, zmm_mask);
       auto bf16_ans = (__m256i)_mm512_cvtneps_pbh(ans);
-      _mm256_mask_storeu_epi32(grad + i * dt_size, ls_mask, bf16_ans);
+      _mm256_mask_storeu_epi16(grad + i * dt_size, ls_mask, bf16_ans);
     }
     // _mm512_mask_storeu_ps(mask_ptr + i * dt_size, ls_mask, mul_scale);
   }
