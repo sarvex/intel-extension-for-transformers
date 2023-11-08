@@ -1,10 +1,23 @@
+//  Copyright (c) 2023 Intel Corporation
+//
+//  Licensed under the Apache License, Version 2.0 (the "License");
+//  you may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
 #include <ATen/core/TensorBody.h>
 #include <immintrin.h>
 
 #include "../include/dropout.hpp"
 
 template <bool BF16>
-static inline void write_rand(void* data, int thread_idx, int64_t elt_num, int dt_size, double p, void* mask_ptr) {
+static inline void write_rand(char* data, int thread_idx, int64_t elt_num, int dt_size, double p, char* mask_ptr) {
   int i = 0;
   auto zmm_scale = _mm512_set1_ps(1.f / (1.f - p));
   auto zmm_p = _mm512_set1_ps(float(p));
@@ -54,7 +67,7 @@ static inline void write_rand(void* data, int thread_idx, int64_t elt_num, int d
 }
 
 template <bool BF16>
-static inline void mul(void* grad, int thread_idx, int64_t elt_num, int dt_size, void* mask_ptr) {
+static inline void mul(char* grad, int thread_idx, int64_t elt_num, int dt_size, char* mask_ptr) {
   int i = 0;
   int align_elt_num = elt_num / 16 * 16;
   for (; i < align_elt_num; i += 16) {
@@ -99,11 +112,13 @@ torch::Tensor dropout_fwd(torch::Tensor& output, double p) {
     auto ker_idx = omp_get_thread_num();
     auto tasks = ker_idx == (core_num - 1) ? elt_num - (core_num - 1) * task_each_core : task_each_core;
     if (output.scalar_type() == torch::kFloat32) {
-      write_rand<false>(output.data_ptr() + ker_idx * task_each_core * output.element_size(), ker_idx, tasks,
-                        output.element_size(), p, mask.data_ptr() + ker_idx * task_each_core * output.element_size());
+      write_rand<false>(reinterpret_cast<char*>(output.data_ptr()) + ker_idx * task_each_core * output.element_size(),
+                        ker_idx, tasks, output.element_size(), p,
+                        reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * output.element_size());
     } else if (output.scalar_type() == torch::kBFloat16) {
-      write_rand<true>(output.data_ptr() + ker_idx * task_each_core * output.element_size(), ker_idx, tasks,
-                       output.element_size(), p, mask.data_ptr() + ker_idx * task_each_core * output.element_size());
+      write_rand<true>(reinterpret_cast<char*>(output.data_ptr()) + ker_idx * task_each_core * output.element_size(),
+                       ker_idx, tasks, output.element_size(), p,
+                       reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * output.element_size());
     } else {
       TORCH_CHECK(false, "Qbits: unsupported input data type in dropout operator.");
     }
@@ -120,11 +135,13 @@ void dropout_bwd(torch::Tensor& grad, torch::Tensor& mask) {
     auto ker_idx = omp_get_thread_num();
     auto tasks = ker_idx == (core_num - 1) ? elt_num - (core_num - 1) * task_each_core : task_each_core;
     if (grad.scalar_type() == torch::kFloat32) {
-      mul<false>(grad.data_ptr() + ker_idx * task_each_core * grad.element_size(), ker_idx, tasks, grad.element_size(),
-                 mask.data_ptr() + ker_idx * task_each_core * grad.element_size());
+      mul<false>(reinterpret_cast<char*>(grad.data_ptr()) + ker_idx * task_each_core * grad.element_size(), ker_idx,
+                 tasks, grad.element_size(),
+                 reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * grad.element_size());
     } else if (grad.scalar_type() == torch::kBFloat16) {
-      mul<true>(grad.data_ptr() + ker_idx * task_each_core * grad.element_size(), ker_idx, tasks, grad.element_size(),
-                mask.data_ptr() + ker_idx * task_each_core * grad.element_size());
+      mul<true>(reinterpret_cast<char*>(grad.data_ptr()) + ker_idx * task_each_core * grad.element_size(), ker_idx,
+                tasks, grad.element_size(),
+                reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * grad.element_size());
     } else {
       TORCH_CHECK(false, "Qbits: unsupported input data type in dropout operator.");
     }
