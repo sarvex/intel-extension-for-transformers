@@ -17,7 +17,7 @@
 
 torch::Tensor jblas_mmbf16_packwei(torch::Tensor& weight, bool transpose) {
   using packKernel = jblas::wrapper::gemm_default::amx_bf16::GemmKernelPackedWeightNN;
-  TORCH_CHECK(weight.sizes() == 2, "Qbits: only support 2-dim weight in mmbf16_packwei.");
+  TORCH_CHECK(weight.dim() == 2, "Qbits: only support 2-dim weight in mmbf16_packwei.");
   static packKernel kernel;
   int n = transpose ? weight.sizes()[0] : weight.sizes()[1];
   int k = transpose ? weight.sizes()[1] : weight.sizes()[0];
@@ -26,9 +26,9 @@ torch::Tensor jblas_mmbf16_packwei(torch::Tensor& weight, bool transpose) {
   packw.assign(pack_wei_tensor.data_ptr<int8_t>());
   if (transpose) {
     kernel.getWeightPtr()->packWeightTranspose(n, k,
-                                               {reinterpret_cast<jblas::utils::bf16*>(weight.data_ptr()), n, &packw});
+                                               {reinterpret_cast<jblas::utils::bf16*>(weight.data_ptr()), k, &packw});
   } else {
-    kernel.getWeightPtr()->packWeight(n, k, {reinterpret_cast<jblas::utils::bf16*>(weight.data_ptr()), k, &packw});
+    kernel.getWeightPtr()->packWeight(n, k, {reinterpret_cast<jblas::utils::bf16*>(weight.data_ptr()), n, &packw});
   }
   return pack_wei_tensor;
 }
@@ -36,7 +36,7 @@ torch::Tensor jblas_mmbf16_packwei(torch::Tensor& weight, bool transpose) {
 void jblas_mmbf16(torch::Tensor& activation, torch::Tensor& weight, torch::Tensor& output) {
   using GEMMKernel = jblas::wrapper::gemm_default::amx_bf16::GemmKernelPackedWeightNN;
   static GEMMKernel kernel;
-  TORCH_CHECK(weight.sizes() == 2, "Qbits: only support 2-dim activation in mmbf16.");
+  TORCH_CHECK(activation.dim() == 2, "Qbits: only support 2-dim activation in mmbf16.");
   auto deseries_wei = jblas::prologue::gemm::PackedWeightParser::deserialBuffer(weight.data_ptr());
   int m = output.sizes()[0];
   int n = output.sizes()[1];

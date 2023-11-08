@@ -108,26 +108,18 @@ torch.ops.load_library("../build/libqbits.so")
 #                             test(m, n, k, blocksize, compute_type,
 #                                  weight_type, trans, bias, src_dt, dst_dt)
 
-import time
 
-# a=torch.rand(11008,4096,dtype=torch.float)
-a=torch.rand(11008,4096,dtype=torch.bfloat16)
-b=a.clone()
-t1=time.time()
-mask=torch.ops.weight_only_jblasop.qbits_dropout_fwd(a,0.6)
-print("qbits cost"+str(time.time()-t1)+"s")
-print(a)
-# print(a)
-t1=time.time()
-b=torch.dropout(b,0.6,True)
-print(b)
-print("torch cost"+str(time.time()-t1)+"s")
-# print(b)
-# a=mask.reshape(-1)
-# b=a<2.5
-# count=0
-# for i in b:
-#     if i:
-#         count+=1
-
-# print(count/(256))
+act=torch.rand(8,4096,dtype=torch.bfloat16)
+wei=torch.rand(11008,4096,dtype=torch.bfloat16)
+ser_wei=torch.ops.weight_only_jblasop.qbits_mmbf16_packwei(wei,True)
+print("packwei done")
+wei = torch.transpose(wei, 0, 1)
+ref=torch.matmul(act,wei)
+tar=torch.zeros(8,11008,dtype=torch.bfloat16)
+torch.ops.weight_only_jblasop.qbits_mmbf16(act,ser_wei,tar)
+if torch.allclose(tar, ref, rtol=0.01):
+    print("ok")
+else:
+    print(tar)
+    print(ref)
+    print("fail")

@@ -49,6 +49,7 @@ class env_initer {
   env_initer() {
     if (check_amx()) jblas::utils::request_perm_xtile_data();
     verbose = std::getenv("QBITS_VERBOSE") != nullptr;
+    FLAGS_caffe2_log_level = 0;
   }
   bool verbose;
 };
@@ -68,11 +69,12 @@ concept normal_PrologueA = requires {
 
 template <typename T>
 concept perchannel_Gemmcore = std::is_same_v<T, jblas::gemm::GemmCore_Row_NN_8x48_AVX512_VNNI> ||
-    std::is_same_v<T, jblas::gemm::GemmCore_Row_NN_16x48_AMX_S8S8> ||
-    std::is_same_v<T, jblas::gemm::GemmCore_Row_NN_2x48_AVX_VNNI>;
+                              std::is_same_v<T, jblas::gemm::GemmCore_Row_NN_16x48_AMX_S8S8> ||
+                              std::is_same_v<T, jblas::gemm::GemmCore_Row_NN_2x48_AVX_VNNI>;
 
 template <typename T>
-concept int8_cmptype_kblock_Gemmcore = std::is_same_v<T, jblas::gemm::kblock::GemmCore_Row_NN_16x48_AMX_INT8_KBLOCK> ||
+concept int8_cmptype_kblock_Gemmcore =
+    std::is_same_v<T, jblas::gemm::kblock::GemmCore_Row_NN_16x48_AMX_INT8_KBLOCK> ||
     std::is_same_v<T, jblas::gemm::kblock::GemmCore_Row_NN_3x48_AVX512_VNNI_KBLOCK> ||
     std::is_same_v<T, jblas::gemm::kblock::GemmCore_Row_NN_1x48_AVX_VNNI_KBLOCK>;
 
