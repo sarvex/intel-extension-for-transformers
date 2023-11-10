@@ -54,7 +54,8 @@ static inline void write_rand(char* data, int thread_idx, int64_t elt_num, int d
       _mm512_mask_storeu_ps(data + i * dt_size, ls_mask, ans);
       _mm512_mask_storeu_ps(mask_ptr + i * dt_size, ls_mask, mul_scale);
     } else {
-      auto ans = _mm512_cvtpbh_ps((__m256bh)_mm256_loadu_ps(reinterpret_cast<float*>(data + i * dt_size)));
+      __m256i ymm_tmp;
+      auto ans = _mm512_cvtpbh_ps((__m256bh)_mm256_mask_loadu_epi16(ymm_tmp, ls_mask, data + i * dt_size));
       ans = _mm512_mul_ps(ans, mul_scale);
       auto bf16_ans = (__m256i)_mm512_cvtneps_pbh(ans);
       auto bf16_mul_scale = (__m256i)_mm512_cvtneps_pbh(mul_scale);
@@ -89,9 +90,9 @@ static inline void mul(char* grad, int thread_idx, int64_t elt_num, int dt_size,
       ans = _mm512_mul_ps(ans, _mm512_mask_loadu_ps(zmm_mask, ls_mask, mask_ptr + i * dt_size));
       _mm512_mask_storeu_ps(grad + i * dt_size, ls_mask, ans);
     } else {
-      auto ans = _mm512_cvtpbh_ps((__m256bh)_mm256_loadu_ps(
-          reinterpret_cast<float*>(grad + i * dt_size)));  // TODO: potential over mem-access risk.
-      auto zmm_mask = _mm512_cvtpbh_ps((__m256bh)_mm256_loadu_ps(reinterpret_cast<float*>(mask_ptr + i * dt_size)));
+      __m256i ymm_tmp;
+      auto ans = _mm512_cvtpbh_ps((__m256bh)_mm256_mask_loadu_epi16(ymm_tmp, ls_mask, grad + i * dt_size));
+      auto zmm_mask = _mm512_cvtpbh_ps((__m256bh)_mm256_mask_loadu_epi16(ymm_tmp, ls_mask, mask_ptr + i * dt_size));
       ans = _mm512_mul_ps(ans, zmm_mask);
       auto bf16_ans = (__m256i)_mm512_cvtneps_pbh(ans);
       _mm256_mask_storeu_epi16(grad + i * dt_size, ls_mask, bf16_ans);
