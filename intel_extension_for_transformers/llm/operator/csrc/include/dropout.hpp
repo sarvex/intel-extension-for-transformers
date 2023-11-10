@@ -20,6 +20,7 @@
 #include <torch/torch.h>
 #include <torch/types.h>
 #include <vector>
+#include "../dispatcher/include/jblas_weightonly_dispatcher.hpp"
 
 #pragma GCC push_options
 #pragma GCC target("avx512f", "avx512bw", "avx512vl", "avx512vbmi", "avx512bf16")

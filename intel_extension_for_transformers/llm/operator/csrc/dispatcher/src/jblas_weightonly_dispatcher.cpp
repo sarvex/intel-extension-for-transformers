@@ -39,11 +39,6 @@
             template <class _T, JBLAS_ISA> class _PrologueB_T, template <JBLAS_ISA> class _Epilogue_T> \
   class Launcher
 
-inline bool check_amx() { return jblas::utils::parallel::CpuDevice::getInstance()->AMX_BF16(); }
-inline bool check_avx512_vnni() { return jblas::utils::parallel::CpuDevice::getInstance()->AVX512_VNNI(); }
-inline bool check_avx_vnni() { return jblas::utils::parallel::CpuDevice::getInstance()->AVX_VNNI(); };
-inline bool check_avx512f() { return jblas::utils::parallel::CpuDevice::getInstance()->AVX512F(); }
-inline bool check_avx2() { return jblas::utils::parallel::CpuDevice::getInstance()->AVX2(); }
 class env_initer {
  public:
   env_initer() {
