@@ -40,7 +40,6 @@ static inline void write_rand(char* data, int thread_idx, int64_t elt_num, int d
       _mm256_storeu_epi16(data + i * dt_size, bf16_ans);
       _mm256_storeu_epi16(mask_ptr + i * dt_size, bf16_mul_scale);
     }
-    // _mm512_storeu_ps(mask_ptr + i * dt_size, mul_scale);
   }
   if (i < elt_num) {
     auto randv = rand_generator.gen_randfp(thread_idx);
@@ -62,7 +61,6 @@ static inline void write_rand(char* data, int thread_idx, int64_t elt_num, int d
       _mm256_mask_storeu_epi16(data + i * dt_size, ls_mask, bf16_ans);
       _mm256_mask_storeu_epi16(mask_ptr + i * dt_size, ls_mask, bf16_mul_scale);
     }
-    // _mm512_mask_storeu_ps(mask_ptr + i * dt_size, ls_mask, mul_scale);
   }
 }
 
@@ -98,7 +96,6 @@ static inline void mul(char* grad, int thread_idx, int64_t elt_num, int dt_size,
       auto bf16_ans = (__m256i)_mm512_cvtneps_pbh(ans);
       _mm256_mask_storeu_epi16(grad + i * dt_size, ls_mask, bf16_ans);
     }
-    // _mm512_mask_storeu_ps(mask_ptr + i * dt_size, ls_mask, mul_scale);
   }
 }
 

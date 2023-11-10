@@ -47,26 +47,6 @@ class RandBuffer {
 
  private:
   enum constants : uint32_t {
-    // Constant parameters for MTGP-11213, no. 1
-    mexp = 11213,                   // Mersenne exponent
-    bsize = (mexp + 31) / 32,       // Size of state buffer, 32-bit words
-    vs = 4,                         // Vector size, 32-bit words
-    csize = (bsize + vs - 1) / vs,  // Size of state buffer in 128, 256 or 512-bit vectors
-    bo = 16,                        // Offset at beginning and end of buffer to enable unaligned
-                                    // access
-    mpos = 84,                      // Middle position index
-    sh1 = 12,                       // Shift count 1
-    sh2 = 4,                        // Shift count 2
-    tbl0 = 0x71588353,              // Transformation matrix row 0
-    tbl1 = 0xdfa887c1,              // Transformation matrix row 1
-    tbl2 = 0x4ba66c6e,              // Transformation matrix row 2
-    tbl3 = 0xa53da0ae,              // Transformation matrix row 3
-    temper0 = 0x200040bb,           // Tempering matrix row 0
-    temper1 = 0x1082c61e,           // Tempering matrix row 1
-    temper2 = 0x10021c03,           // Tempering matrix row 2
-    temper3 = 0x0003f0b9,           // Tempering matrix row 3
-    mask = 0xfff80000,              // Bit mask
-
     // Factors for MWC generators
     mwcfac0 = 4294963023u,  // Factor for each MWC generator
     mwcfac1 = 3947008974u,
