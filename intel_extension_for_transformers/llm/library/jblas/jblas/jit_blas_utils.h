@@ -76,6 +76,7 @@ struct bf16 {
   bf16() : x(0) {}
 
 #if CompileBF16()
+#pragma GCC push_options
 #pragma GCC target("avx512vl", "avx512bf16")
   static uint16_t f32_to_bf16(float v) {
     auto mm = _mm_load_ss(&v);
@@ -84,13 +85,14 @@ struct bf16 {
     _mm_storeu_si16(reinterpret_cast<uint16_t*>(&dst), reinterpret_cast<__m128i>(mm2));
     return dst;
   }
-
+#pragma GCC pop_options
   explicit bf16(float vf32) : x(bit_cast<uint16_t>(f32_to_bf16(vf32))) {}
 #else
   explicit bf16(float vf32) { fromfloat(vf32); }
 #endif
 
 #if CompileBF16()
+#pragma GCC push_options
 #pragma GCC target("avx512vl", "avx512bf16")
   float tofloat() const {
     auto mm = _mm_loadu_si16(&(this->x));
@@ -99,6 +101,7 @@ struct bf16 {
     _mm_store_ss(&dst, reinterpret_cast<__m128>(mm2));
     return dst;
   }
+#pragma GCC pop_options
 #else
   float tofloat() const {
     bf16f32 tmp = {0.f};
@@ -106,6 +109,12 @@ struct bf16 {
     return tmp.f32;
   }
 #endif
+
+  float tofloat_nosimd() const {
+    bf16f32 tmp = {0.f};
+    tmp.bf16[1] = x;
+    return tmp.f32;
+  }
 
   operator float() const { return tofloat(); }
 
@@ -121,11 +130,22 @@ struct bf16 {
 #else
     bf16f32 tmp = {0.f};
     tmp.f32 = _v;
-    // See document of VCVTNEPS2BF16 in Intel® 64 and IA-32 Architectures Software Developer’s Manual Volume 2
+    // See document of VCVTNEPS2BF16 in Intel® 64 and IA-32 Architectures
+    // Software Developer’s Manual Volume 2
     const auto lsb = tmp.bf16[1] & 1;
     tmp.u += 0x7fff + lsb;
     x = tmp.bf16[1];
 #endif
+  }
+
+  void fromfloat_nosimd(float _v) {
+    bf16f32 tmp = {0.f};
+    tmp.f32 = _v;
+    // See document of VCVTNEPS2BF16 in Intel® 64 and IA-32 Architectures
+    // Software Developer’s Manual Volume 2
+    const auto lsb = tmp.bf16[1] & 1;
+    tmp.u += 0x7fff + lsb;
+    x = tmp.bf16[1];
   }
 };
 
@@ -143,7 +163,8 @@ struct fp16 {
     // round-to-nearest-even: add last bit after truncated mantissa
     const uint32_t b = bit_cast<uint32_t>(val) + 0x00001000;
     const uint32_t e = (b & 0x7F800000) >> 23;  // exponent
-    // mantissa; in line below: 0x007FF000 = 0x00800000-0x00001000 = decimal indicator flag - initial rounding
+    // mantissa; in line below: 0x007FF000 = 0x00800000-0x00001000 = decimal
+    // indicator flag - initial rounding
     const uint32_t m = b & 0x007FFFFF;
     // sign : normalized : denormalized : saturate
 
@@ -566,7 +587,8 @@ class CpuDevice {
 
   void print() {
     printf(
-        "AVX:%d AVX2:%d AVX512F:%d AVX_VNNI:%d AVX512_VNNI:%d AMX_INT8:%d AMX_BF16:%d AVX512_BF16:%d AVX512_FP16:%d\n",
+        "AVX:%d AVX2:%d AVX512F:%d AVX_VNNI:%d AVX512_VNNI:%d AMX_INT8:%d "
+        "AMX_BF16:%d AVX512_BF16:%d AVX512_FP16:%d\n",
         mHasAVX, mHasAVX2, mHasAVX512F, mHasAVX_VNNI, mHasAVX512_VNNI, mHasAMX_INT8, mHasAMX_BF16, mHasAVX512_BF16,
         mHasAVX512_FP16);
   }
@@ -1184,8 +1206,8 @@ static float nf4_dequant_fp32_LUT[] = {0.f,
                                        1.0f};
 
 // Calcuate instruction(s) size (in bytes). Example:
-// const int s = get_inst_size([](Xbyak::CodeGenerator* c) { c->vmovups(c->ptr[c->rax], c->zmm0); });
-// printf("inst_size: %d\n", s);
+// const int s = get_inst_size([](Xbyak::CodeGenerator* c) {
+// c->vmovups(c->ptr[c->rax], c->zmm0); }); printf("inst_size: %d\n", s);
 inline size_t get_inst_size(std::function<void(Xbyak::CodeGenerator*)> inst) {
   Xbyak::CodeGenerator code;
   code.resetSize();
