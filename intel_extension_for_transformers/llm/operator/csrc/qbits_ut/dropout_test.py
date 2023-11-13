@@ -26,7 +26,10 @@ def test(m, n, data_type, p,  dump_info=False):
         weight = weight.to(torch.bfloat16)
         grad = grad.to(torch.bfloat16)
     bk_grad = grad.clone()
+    t1=time.time()
     mask = torch.ops.qbits_customop.qbits_dropout_fwd(weight, p)
+    t2=time.time()
+    print("cost:"+str(t2-t1)+"s")
     num_zero = (m*n-torch.nonzero(mask.reshape(-1)).numel())
     dropout_p = num_zero/(m*n)
     if dump_info:

@@ -12,11 +12,17 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 #include <ATen/core/TensorBody.h>
+#include <emmintrin.h>
 #include <immintrin.h>
+#include <xmmintrin.h>
 #include <cassert>
 
 #include "../include/dropout.hpp"
+#include "jblas/jit_blas_utils.h"
+#include "jblas/kernel_avx2.h"
 
+#pragma GCC push_options
+#pragma GCC target("avx512f", "avx512bw", "avx512vl", "avx512vbmi", "avx512dq", "avx512bf16")
 template <bool BF16>
 static inline void write_rand(char* data, int thread_idx, int64_t elt_num, int dt_size, double p, char* mask_ptr) {
   int i = 0;
@@ -67,10 +73,6 @@ static inline void write_rand(char* data, int thread_idx, int64_t elt_num, int d
 }
 
 template <bool BF16>
-static inline void write_rand_avx2(char* data, int thread_idx, int64_t elt_num, int dt_size, double p, char* mask_ptr) {
-}
-
-template <bool BF16>
 static inline void mul(char* grad, int thread_idx, int64_t elt_num, int dt_size, char* mask_ptr) {
   int i = 0;
   int align_elt_num = elt_num / 16 * 16;
@@ -104,26 +106,122 @@ static inline void mul(char* grad, int thread_idx, int64_t elt_num, int dt_size,
     }
   }
 }
+#pragma GCC pop_options
+
+#pragma GCC push_options
+#pragma GCC target("avx2")
+template <bool BF16>
+static inline void write_rand_avx2(char* data, int thread_idx, int64_t elt_num, int dt_size, double p, char* mask_ptr) {
+  int i = 0;
+  auto ymm_scale = _mm256_set1_ps(1.f / (1.f - p));
+  auto ymm_p = _mm256_set1_ps(float(p));
+  int align_elt_num = elt_num / 8 * 8;
+  auto bf16_and_helper = _mm256_set1_epi32(0X00000001);
+  auto bf16_add_helper = _mm256_set1_epi32(0x00007FFF);
+  for (; i < align_elt_num; i += 8) {
+    auto randv = rand_generator.gen_randfp_avx2(thread_idx);
+    auto mul_scale = _mm256_set1_ps(0.f);
+    auto zero_mask = _mm256_cmp_ps(ymm_p, randv, 1);
+    mul_scale = _mm256_blendv_ps(mul_scale, ymm_scale, zero_mask);
+    if constexpr (!BF16) {
+      auto ans = _mm256_load_ps(reinterpret_cast<float*>(data + i * dt_size));
+      ans = _mm256_mul_ps(ans, mul_scale);
+      _mm256_store_ps(reinterpret_cast<float*>(data + i * dt_size), ans);
+      _mm256_store_ps(reinterpret_cast<float*>(mask_ptr + i * dt_size), mul_scale);
+    } else {
+      auto bf16_v = _mm_loadu_si128(reinterpret_cast<__m128i*>(data + i * dt_size));
+      auto fp32_v = _mm256_castsi256_ps(_mm256_bslli_epi128(_mm256_cvtepu16_epi32(bf16_v), 2));
+      fp32_v = _mm256_mul_ps(fp32_v, mul_scale);
+      auto ans = jblas::kernel::avx2::cvt_fp32_to_bf16(fp32_v, &bf16_and_helper, &bf16_add_helper);
+      auto bf16_scale = jblas::kernel::avx2::cvt_fp32_to_bf16(mul_scale, &bf16_and_helper, &bf16_add_helper);
+      _mm_store_ps(reinterpret_cast<float*>(data + i * dt_size), (__m128)ans);
+      _mm_store_ps(reinterpret_cast<float*>(mask_ptr + i * dt_size), (__m128)bf16_scale);
+    }
+  }
+  if (i < elt_num) {
+    auto randv = rand_generator.gen_randfp_avx2(thread_idx);
+    auto mul_scale = _mm256_set1_ps(0.f);
+    auto zero_mask = _mm256_cmp_ps(ymm_p, randv, 1);
+    if constexpr (!BF16) {
+      float* fp_data_ptr = reinterpret_cast<float*>(data);
+      float* fp_mask_ptr = reinterpret_cast<float*>(mask_ptr);
+      mul_scale = _mm256_blendv_ps(mul_scale, ymm_scale, zero_mask);
+      for (int j = 0; j < (elt_num - align_elt_num); j++) {
+        fp_data_ptr[i + j] = fp_data_ptr[i + j] * mul_scale[j];
+        fp_mask_ptr[i + j] = mul_scale[j];
+      }
+    } else {
+      jblas::utils::bf16* bf16_data_ptr = reinterpret_cast<jblas::utils::bf16*>(data);
+      jblas::utils::bf16* bf16_mask_ptr = reinterpret_cast<jblas::utils::bf16*>(mask_ptr);
+      mul_scale = _mm256_blendv_ps(mul_scale, ymm_scale, zero_mask);
+      for (int j = 0; j < (elt_num - align_elt_num); j++) {
+        bf16_data_ptr[i + j].fromfloat_nosimd(bf16_data_ptr[i + j].tofloat_nosimd() * mul_scale[j]);
+        bf16_mask_ptr[i + j].fromfloat_nosimd(mul_scale[j]);
+      }
+    }
+  }
+}
 
 template <bool BF16>
-static inline void mul_avx2(char* grad, int thread_idx, int64_t elt_num, int dt_size, char* mask_ptr) {}
+static inline void mul_avx2(char* grad, int thread_idx, int64_t elt_num, int dt_size, char* mask_ptr) {
+  int i = 0;
+  int align_elt_num = elt_num / 8 * 8;
+  auto bf16_and_helper = _mm256_set1_epi32(0X00000001);
+  auto bf16_add_helper = _mm256_set1_epi32(0x00007FFF);
+  for (; i < align_elt_num; i += 8) {
+    if constexpr (!BF16) {
+      auto ans = _mm256_load_ps(reinterpret_cast<float*>(grad + i * dt_size));
+      ans = _mm256_mul_ps(ans, _mm256_load_ps(reinterpret_cast<float*>(mask_ptr + i * dt_size)));
+      _mm256_store_ps(reinterpret_cast<float*>(grad + i * dt_size), ans);
+    } else {
+      auto bf16_grad = _mm_loadu_si128(reinterpret_cast<__m128i*>(grad + i * dt_size));
+      auto bf16_mask = _mm_loadu_si128(reinterpret_cast<__m128i*>(mask_ptr + i * dt_size));
+      auto fp32_grad = _mm256_castsi256_ps(_mm256_bslli_epi128(_mm256_cvtepu16_epi32(bf16_grad), 2));
+      auto fp32_mask = _mm256_castsi256_ps(_mm256_bslli_epi128(_mm256_cvtepu16_epi32(bf16_mask), 2));
+      fp32_grad = _mm256_mul_ps(fp32_grad, fp32_mask);
+      auto ans = jblas::kernel::avx2::cvt_fp32_to_bf16(fp32_grad, &bf16_and_helper, &bf16_add_helper);
+      _mm_store_ps(reinterpret_cast<float*>(grad + i * dt_size), (__m128)ans);
+    }
+  }
+  if (i < elt_num) {
+    if constexpr (!BF16) {
+      float* fp_data_ptr = reinterpret_cast<float*>(grad);
+      float* fp_mask_ptr = reinterpret_cast<float*>(mask_ptr);
+      for (int j = 0; j < (elt_num - align_elt_num); j++) {
+        fp_data_ptr[i + j] = fp_data_ptr[i + j] * fp_mask_ptr[i + j];
+      }
+    } else {
+      jblas::utils::bf16* bf16_data_ptr = reinterpret_cast<jblas::utils::bf16*>(grad);
+      jblas::utils::bf16* bf16_mask_ptr = reinterpret_cast<jblas::utils::bf16*>(mask_ptr);
+      for (int j = 0; j < (elt_num - align_elt_num); j++) {
+        bf16_data_ptr[i + j].fromfloat_nosimd(bf16_data_ptr[i + j].tofloat_nosimd() *
+                                              bf16_mask_ptr[i + j].tofloat_nosimd());
+      }
+    }
+  }
+}
+#pragma GCC pop_options
 
 torch::Tensor dropout_fwd(torch::Tensor& output, double p) {
   auto elt_num = output.numel();
   auto core_num = omp_get_max_threads();
-  auto task_each_core = elt_num / core_num;
+  auto task_each_core = jblas::utils::updiv(int(elt_num / core_num), 16) * 16;
   torch::Tensor mask = torch::empty_like(output);
 #pragma omp parallel
   {
     auto ker_idx = omp_get_thread_num();
-    auto tasks = ker_idx == (core_num - 1) ? elt_num - (core_num - 1) * task_each_core : task_each_core;
+    auto tasks =
+        elt_num - ker_idx * task_each_core > task_each_core ? task_each_core : elt_num - ker_idx * task_each_core;
     if (output.scalar_type() == torch::kFloat32) {
       if (check_avx512f()) {
         write_rand<false>(reinterpret_cast<char*>(output.data_ptr()) + ker_idx * task_each_core * output.element_size(),
                           ker_idx, tasks, output.element_size(), p,
                           reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * output.element_size());
       } else {
-        assert(0);
+        write_rand_avx2<false>(
+            reinterpret_cast<char*>(output.data_ptr()) + ker_idx * task_each_core * output.element_size(), ker_idx,
+            tasks, output.element_size(), p,
+            reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * output.element_size());
       }
     } else if (output.scalar_type() == torch::kBFloat16) {
       if (check_avx512f()) {
@@ -131,7 +229,10 @@ torch::Tensor dropout_fwd(torch::Tensor& output, double p) {
                          ker_idx, tasks, output.element_size(), p,
                          reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * output.element_size());
       } else {
-        assert(0);
+        write_rand_avx2<true>(
+            reinterpret_cast<char*>(output.data_ptr()) + ker_idx * task_each_core * output.element_size(), ker_idx,
+            tasks, output.element_size(), p,
+            reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * output.element_size());
       }
     } else {
       TORCH_CHECK(false, "Qbits: unsupported input data type in dropout operator.");
@@ -143,18 +244,21 @@ torch::Tensor dropout_fwd(torch::Tensor& output, double p) {
 void dropout_bwd(torch::Tensor& grad, torch::Tensor& mask) {
   auto elt_num = grad.numel();
   auto core_num = omp_get_max_threads();
-  auto task_each_core = elt_num / core_num;
+  auto task_each_core = jblas::utils::updiv(int(elt_num / core_num), 16) * 16;
 #pragma omp parallel
   {
     auto ker_idx = omp_get_thread_num();
-    auto tasks = ker_idx == (core_num - 1) ? elt_num - (core_num - 1) * task_each_core : task_each_core;
+    auto tasks =
+        elt_num - ker_idx * task_each_core > task_each_core ? task_each_core : elt_num - ker_idx * task_each_core;
     if (grad.scalar_type() == torch::kFloat32) {
       if (check_avx512f()) {
         mul<false>(reinterpret_cast<char*>(grad.data_ptr()) + ker_idx * task_each_core * grad.element_size(), ker_idx,
                    tasks, grad.element_size(),
                    reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * grad.element_size());
       } else {
-        assert(0);
+        mul_avx2<false>(reinterpret_cast<char*>(grad.data_ptr()) + ker_idx * task_each_core * grad.element_size(),
+                        ker_idx, tasks, grad.element_size(),
+                        reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * grad.element_size());
       }
     } else if (grad.scalar_type() == torch::kBFloat16) {
       if (check_avx512f()) {
@@ -162,7 +266,9 @@ void dropout_bwd(torch::Tensor& grad, torch::Tensor& mask) {
                   tasks, grad.element_size(),
                   reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * grad.element_size());
       } else {
-        assert(0);
+        mul_avx2<true>(reinterpret_cast<char*>(grad.data_ptr()) + ker_idx * task_each_core * grad.element_size(),
+                       ker_idx, tasks, grad.element_size(),
+                       reinterpret_cast<char*>(mask.data_ptr()) + ker_idx * task_each_core * grad.element_size());
       }
     } else {
       TORCH_CHECK(false, "Qbits: unsupported input data type in dropout operator.");
