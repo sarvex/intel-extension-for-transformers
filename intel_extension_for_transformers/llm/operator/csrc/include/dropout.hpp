@@ -12,7 +12,9 @@
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
 #include "../dispatcher/include/jblas_weightonly_dispatcher.hpp"
+#include "jblas/jit_blas_utils.h"
 #include <ATen/core/TensorBody.h>
+#include <cstddef>
 #include <cstdint>
 #include <ctime>
 #include <immintrin.h>
@@ -29,8 +31,12 @@ class RandBuffer {
     std::srand((int)std::time(0));
     auto thread_num = omp_get_max_threads();
     load_buffer.resize(thread_num * 16);
-    iws.resize(thread_num);
+    iws = jblas::utils::amalloc<int>(thread_num * 16);
     for (int i = 0; i < thread_num; i++) initMWC(rand(), i);
+  }
+
+  ~RandBuffer() {
+    if (iws != NULL) jblas::utils::afree(iws);
   }
 
 #pragma GCC push_options
@@ -76,7 +82,7 @@ class RandBuffer {
   };
 
   std::vector<uint32_t> load_buffer;
-  std::vector<int> iws;
+  int* iws;
 
   const uint32_t MWCFactors[16] = {  // Factor for MWC
       mwcfac0, 0, mwcfac1, 0, mwcfac2, 0, mwcfac3, 0, mwcfac4, 0, mwcfac5, 0, mwcfac6, 0, mwcfac7, 0};
@@ -110,7 +116,7 @@ class RandBuffer {
 #pragma GCC target("avx2")
   __m256i next1_avx2(int thread_idx) {  // Get 256 bits from MWC
     uint32_t* buffer = load_buffer.data() + 8 * thread_idx;
-    auto iw = iws[thread_idx];
+    auto iw = iws[thread_idx * 16];
     __m256i x, f, y, y_cp;
     x = _mm256_loadu_si256((__m256i_u*)(buffer + iw));
     f = _mm256_loadu_si256((__m256i_u*)(MWCFactors + iw));
@@ -124,13 +130,13 @@ class RandBuffer {
     y = _mm256_xor_si256(y, y_cp);
     y_cp = _mm256_sll_epi64(y, _mm_cvtsi32_si128(shw3));
     y = _mm256_xor_si256(y, y_cp);
-    iws[thread_idx] = (iw + 8) & 15;
+    iws[thread_idx * 16] = (iw + 8) & 15;
     return y;
   }
 
   void initMWC(int seed, int thread_idx) {
     uint32_t* buffer = load_buffer.data() + 16 * thread_idx;
-    iws[thread_idx] = 0;
+    iws[thread_idx * 16] = 0;
     int i;
     // Fill buffer with function of seed
     uint32_t tmp = seed;
@@ -142,8 +148,8 @@ class RandBuffer {
       tmp = buffer[i] = 1566083941u * (tmp ^ (tmp >> 27)) + i;
     }
     // Randomize 4 rounds
-    for (i = 0; i < 8 ; i++) next1_avx2(thread_idx);
-    iws[thread_idx] = 0;
+    for (i = 0; i < 8; i++) next1_avx2(thread_idx);
+    iws[thread_idx * 16] = 0;
   }
 #pragma GCC pop_options
 };
