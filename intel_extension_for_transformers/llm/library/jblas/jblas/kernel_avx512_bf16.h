@@ -80,6 +80,7 @@ static inline JBLAS_CODE fp32_cvt_bf16_2D_write_back(const void* raw_srcptr, voi
       std::memset(dst + col * sizeof(utils::bf16), 0, npadding);
     }
   }
+  return JblasSuccess;
 #endif
   return avx512f::fp32_cvt_bf16_2D_write_back(raw_srcptr, raw_dstptr, row, col, srcstride, dststride, zeropadding);
 }

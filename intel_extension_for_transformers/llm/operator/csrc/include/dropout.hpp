@@ -30,13 +30,14 @@ class RandBuffer {
   RandBuffer() {
     std::srand((int)std::time(0));
     auto thread_num = omp_get_max_threads();
-    load_buffer.resize(thread_num * 16);
+    load_buffer = jblas::utils::amalloc<uint32_t>(thread_num * 16);
     iws = jblas::utils::amalloc<int>(thread_num * 16);
     for (int i = 0; i < thread_num; i++) initMWC(rand(), i);
   }
 
   ~RandBuffer() {
     if (iws != NULL) jblas::utils::afree(iws);
+    if (load_buffer != NULL) jblas::utils::afree(load_buffer);
   }
 
 #pragma GCC push_options
@@ -81,7 +82,7 @@ class RandBuffer {
     shw3 = 13
   };
 
-  std::vector<uint32_t> load_buffer;
+  uint32_t* load_buffer;
   int* iws;
 
   const uint32_t MWCFactors[16] = {  // Factor for MWC
@@ -90,7 +91,7 @@ class RandBuffer {
 #pragma GCC push_options
 #pragma GCC target("avx512f", "avx512bw", "avx512vl", "avx512vbmi", "avx512dq")
   __m512i next1(int thread_idx) {  // Get 512 bits from MWC
-    uint32_t* buffer = load_buffer.data() + 16 * thread_idx;
+    uint32_t* buffer = load_buffer + 16 * thread_idx;
     // Factors for multiply-with-carry
     __m512i x, f, y, y_cp;
     x = _mm512_loadu_si512(buffer);      // previous x and carry
@@ -115,7 +116,7 @@ class RandBuffer {
 #pragma GCC push_options
 #pragma GCC target("avx2")
   __m256i next1_avx2(int thread_idx) {  // Get 256 bits from MWC
-    uint32_t* buffer = load_buffer.data() + 8 * thread_idx;
+    uint32_t* buffer = load_buffer + 8 * thread_idx;
     auto iw = iws[thread_idx * 16];
     __m256i x, f, y, y_cp;
     x = _mm256_loadu_si256((__m256i_u*)(buffer + iw));
@@ -135,7 +136,7 @@ class RandBuffer {
   }
 
   void initMWC(int seed, int thread_idx) {
-    uint32_t* buffer = load_buffer.data() + 16 * thread_idx;
+    uint32_t* buffer = load_buffer + 16 * thread_idx;
     iws[thread_idx * 16] = 0;
     int i;
     // Fill buffer with function of seed
