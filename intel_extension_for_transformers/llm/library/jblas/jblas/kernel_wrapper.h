@@ -378,6 +378,17 @@ class DecompressKBlockS4FP {
 };
 
 template <typename _DST_T, int _PACK_ROW>
+class DecompressKBlockF4FpRowBlk {
+ public:
+  template <JBLAS_ISA ISA_T, typename SCA_T, JBLAS_F4_TYPE F4_T>
+  static inline JBLAS_CODE forward(utils::f4x2* srcptr, _DST_T* dstptr, int row, int col, int ld_src, int ld_dst,
+                                   SCA_T* scales, int k_offset, int kblock, int NPad) {
+    return ref::decompress_nblock_f4_fp<F4_T, _DST_T, _PACK_ROW, SCA_T>(srcptr, dstptr, row, col, ld_src, ld_dst,
+                                                                        scales, k_offset, kblock, NPad);
+  }
+};
+
+template <typename _DST_T, int _PACK_ROW>
 class DecompressKBlockF4Fp {
  public:
   template <JBLAS_ISA ISA_T, typename SCA_T, JBLAS_F4_TYPE F4_T>

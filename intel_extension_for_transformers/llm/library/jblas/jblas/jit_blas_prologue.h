@@ -243,6 +243,7 @@ class StorageWeightCorrection : public ISerialObject {
   int mCStep = 0;
   bool mIsAsym = false;
   bool mHasReduce = false;
+  // bool rowBlock = false;
 
   size_t resize(int NPad, int KBlks, bool _is_asym = false, bool _has_reduce = true) {
     mIsAsym = _is_asym;
@@ -257,6 +258,7 @@ class StorageWeightCorrection : public ISerialObject {
     size_t totalsize = 0;
     totalsize += sizeof(mIsAsym);
     totalsize += sizeof(mHasReduce);
+    // totalsize += sizeof(rowBlock);
     totalsize += sizeof(mCStep);
     totalsize += sizeof(mCSize);
     return totalsize;
@@ -271,6 +273,7 @@ class StorageWeightCorrection : public ISerialObject {
   virtual void serializeToBuffer(int8_t*& wptr) override {
     utils::serialize(wptr, mIsAsym);
     utils::serialize(wptr, mHasReduce);
+    // utils::serialize(wptr, rowBlock);
     utils::serialize(wptr, mCStep);
     utils::serialize(wptr, mCSize);
     if (wptr != (int8_t*)mSPtr) {
@@ -294,6 +297,7 @@ class StorageWeightCorrection : public ISerialObject {
     if (!locate_buf) {
       mIsAsym = utils::deserialize<bool>(rptr);
       mHasReduce = utils::deserialize<bool>(rptr);
+      // rowBlock = utils::deserialize<bool>(rptr);
       mCStep = utils::deserialize<int>(rptr);
       mCSize = utils::deserialize<size_t>(rptr);
     } else {

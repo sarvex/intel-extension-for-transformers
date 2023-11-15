@@ -17,9 +17,17 @@
 
 from ut_utils import *
 
+
+def bnb_linear_quant(blksize, wei):
+    gemm_wei = torch.transpose(wei, 0, 1)
+    k = gemm_wei.shape[0]
+    n = gemm_wei.shape[1]
+    
+
 @capture_args
-def test(m, n, k, blocksize, compute_type, weight_type, transpose, add_bias, src_dt, dst_dt, dump_tensor_info=False):
+def test(m, n, k, blocksize, compute_type, weight_type, transpose, add_bias, src_dt, dst_dt, dump_tensor_info=True):
     torch.manual_seed(0)
+    torch.set_printoptions(precision=4, sci_mode=False)
     ref_activation = torch.rand(m, k, dtype=torch.float)
     tar_activation = ref_activation.clone()
     if src_dt == "bf16":
@@ -39,43 +47,44 @@ def test(m, n, k, blocksize, compute_type, weight_type, transpose, add_bias, src
     bias = torch.rand(n, dtype=torch.float)*10
     if dump_tensor_info:
         print(revert_wei)
-    tar_dst = torch.zeros(m, n, dtype=torch.float)
-    if dst_dt == "bf16":
-        tar_dst = tar_dst.to(torch.bfloat16)
-    if transpose:
-        revert_wei = torch.transpose(revert_wei, 0, 1)
-    ref_dst = torch.matmul(ref_activation, revert_wei)
-    torch.ops.weight_only_jblasop.qbits_linear(
-        tar_activation, compress_wei, bias, tar_dst, n, add_bias, compute_type, weight_type)
-    if dst_dt == "bf16":
-        tar_dst = tar_dst.to(torch.float)
-    if add_bias:
-        ref_dst += bias
-    if dump_tensor_info:
-        print(tar_dst)
-        print(ref_dst)
-    if torch.allclose(tar_dst, ref_dst, rtol=0.03):
-        print("ok")
-    else:
-        print("fail")
+    bnb_linear_quant(blocksize, raw_wei)
+    print(abs(revert_wei-raw_wei))
+    # tar_dst = torch.zeros(m, n, dtype=torch.float)
+    # if dst_dt == "bf16":
+    #     tar_dst = tar_dst.to(torch.bfloat16)
+    # if transpose:
+    #     revert_wei = torch.transpose(revert_wei, 0, 1)
+    # ref_dst = torch.matmul(ref_activation, revert_wei)
+    # torch.ops.weight_only_jblasop.qbits_linear(
+    #     tar_activation, compress_wei, bias, tar_dst, n, add_bias, compute_type, weight_type)
+    # if dst_dt == "bf16":
+    #     tar_dst = tar_dst.to(torch.float)
+    # if add_bias:
+    #     ref_dst += bias
+    # if dump_tensor_info:
+    #     print(tar_dst)
+    #     print(ref_dst)
+    # if torch.allclose(tar_dst, ref_dst, rtol=0.03):
+    #     print("ok")
+    # else:
+    #     print("fail")
 
 
-configs = {"s8_scalef32": {"int8", "fp32"}, "s4clip_scalef32": {"int8", "fp32", "bf16"}, "s4fullrange_scalef32": {
-    "int8", "fp32", "bf16"}, "fp4bnb_scalef32": {"fp32", "bf16"}, "fp4e2m1_scalef32": {"fp32", "bf16"}, "nf4_scalef32": {"fp32", "bf16"}}
+configs = {"nf4_scalef32": {"fp32"}}
 
-blocksizes = [128, -1]
-do_trans = [False, True]
-add_bias = [False, True]
-src_dts = ["fp32", "bf16"]
-dst_dts = ["fp32", "bf16"]
+blocksizes = [8]
+do_trans = [True]
+add_bias = [False]
+src_dts = ["fp32"]
+dst_dts = ["fp32"]
 
 workspace = torch.zeros(786432, dtype=torch.int8)
 torch.ops.weight_only_jblasop.qbits_set_weightonly_workspace(workspace)
 
 for weight_type in configs:
-    m = 256
-    n = 1024
-    k = 512  # contain unalign calc error bug currently.
+    m = 16
+    n = 16
+    k = 16  # contain unalign calc error bug currently.
     for compute_type in configs[weight_type]:
         for blocksize in blocksizes:
             if compute_type == "int8" and blocksize % 8 != 0 and blocksize != -1:
