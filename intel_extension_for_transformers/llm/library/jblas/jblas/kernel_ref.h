@@ -505,17 +505,22 @@ inline JBLAS_CODE decompress_kblock_f4_fp(utils::f4x2* srcptr, _DST_T* dstptr, i
 
 template <JBLAS_F4_TYPE F4_T, typename _DST_T, int _PACK_ROW, typename _S_T>
 inline JBLAS_CODE decompress_nblock_f4_fp(utils::f4x2* srcptr, _DST_T* dstptr, int row, int col, int ld_src, int ld_dst,
-                                          _S_T* scales, int k_offset, int kblock, int NPad) {
-  auto base_scale = scales + k_offset * (16 / kblock);
+                                          _S_T* scales, int k_offset, int kblock, int NPad, int n_pos) {
+  // std::cout << "scales:" << scales << " k_offset:" << k_offset << std::endl;
+  // std::cout << "ld_scale:" << utils::updiv(NPad, kblock) << std::endl;
+  // std::cout << "npos:" << n_pos << std::endl;
   for (int i = 0; i < row; i++) {
+    auto base_scale = scales + (k_offset + i) * utils::updiv(NPad, kblock);
     for (int j = 0; j < col; j += 2) {
       auto tmp = srcptr[i * ld_src / 2 + j / 2];
       float scale0, scale1, dst0, dst1;
       int s0_idx, s1_idx;
-      s0_idx = (j / kblock) / _PACK_ROW;
-      s1_idx = ((j + 1) / kblock) / _PACK_ROW;
+      s0_idx = ((n_pos + j) / kblock) / _PACK_ROW;
+      s1_idx = ((n_pos + j + 1) / kblock) / _PACK_ROW;
       scale0 = float(base_scale[s0_idx]);
       scale1 = float(base_scale[s1_idx]);
+      // std::cout << "row:" << i << " col:" << j << " s0_idx:" << s0_idx << " s1_idx:" << s1_idx << " scale0:" << scale0
+      //           << " scale1:" << scale1 << std::endl;
       dst0 = f4_dequantize<F4_T>(tmp.x, scale0);
       dst1 = f4_dequantize<F4_T>(tmp.y, scale1);
       dstptr[i * ld_dst + j + 0] = static_cast<_DST_T>(dst0);

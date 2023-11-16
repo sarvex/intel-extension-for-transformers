@@ -300,6 +300,8 @@ class StorageWeightCorrection : public ISerialObject {
       // rowBlock = utils::deserialize<bool>(rptr);
       mCStep = utils::deserialize<int>(rptr);
       mCSize = utils::deserialize<size_t>(rptr);
+      std::cout << "deser mCStep" << mCStep << std::endl;
+      std::cout << "deser mCSize" << mCSize << std::endl;
     } else {
       utils::serialize<bool>(rptr, mIsAsym);
       utils::serialize<bool>(rptr, mHasReduce);

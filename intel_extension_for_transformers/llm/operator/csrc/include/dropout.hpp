@@ -157,3 +157,8 @@ class RandBuffer {
 static RandBuffer rand_generator;
 void dropout_bwd(torch::Tensor& grad, torch::Tensor& mask);
 torch::Tensor dropout_fwd(torch::Tensor& output, double p);
+void fp4_quantize_launcher(const torch::Tensor& A, torch::Tensor& absmax,
+                           torch::Tensor& out, int64_t blocksize, int64_t n);
+
+void fp4_dequantize_launcher(const torch::Tensor& A, torch::Tensor& absmax,
+                             torch::Tensor& out, int64_t blocksize, int64_t n);

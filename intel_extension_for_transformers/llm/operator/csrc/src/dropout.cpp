@@ -20,6 +20,7 @@
 #include "../include/dropout.hpp"
 #include "jblas/jit_blas_utils.h"
 #include "jblas/kernel_avx2.h"
+#include "jblas/kernel_ref.h"
 
 #pragma GCC push_options
 #pragma GCC target("avx512f", "avx512bw", "avx512vl", "avx512vbmi", "avx512dq", "avx512bf16")
@@ -272,6 +273,48 @@ void dropout_bwd(torch::Tensor& grad, torch::Tensor& mask) {
       }
     } else {
       TORCH_CHECK(false, "Qbits: unsupported input data type in dropout operator.");
+    }
+  }
+}
+
+void fp4_quantize_launcher(const torch::Tensor& A, torch::Tensor& absmax, torch::Tensor& out, int64_t blocksize,
+                           int64_t n) {
+  auto blocks = absmax.sizes()[0];
+  auto src = A.data_ptr<float>();
+  auto absmax_ptr = absmax.data_ptr<float>();
+  auto out_ptr = out.data_ptr<unsigned char>();
+  for (int b = 0; b < blocks; b++) {
+    float max = -99999999999999.f;
+    size_t offset = b * blocksize;
+    for (int i = 0; i < blocksize; i++) {
+      if (offset + i >= n) break;
+      max = std::abs(src[offset + i]) > max ? std::abs(src[offset + i]) : max;
+    }
+    absmax_ptr[b] = max;
+    for (int i = 0; i < blocksize / 2; i++) {
+      unsigned char packed_4bit = 0;
+      if (offset + i * 2 >= n) break;
+      packed_4bit |= jblas::kernel::ref::nf4_quantize(src[offset + 2 * i] * (1.f / max)) << 4;
+      packed_4bit |= jblas::kernel::ref::nf4_quantize(src[offset + 2 * i + 1] * (1.f / max));
+      out_ptr[offset / 2 + i] = packed_4bit;
+    }
+  }
+}
+
+void fp4_dequantize_launcher(const torch::Tensor& A, torch::Tensor& absmax, torch::Tensor& out, int64_t blocksize,
+                             int64_t n) {
+  auto blocks = absmax.sizes()[0];
+  auto src = A.data_ptr<unsigned char>();
+  auto absmax_ptr = absmax.data_ptr<float>();
+  auto out_ptr = out.data_ptr<float>();
+  for (int b = 0; b < blocks; b++) {
+    size_t offset = b * blocksize;
+    auto max = absmax_ptr[b];
+    for (int i = 0; i < blocksize / 2; i++) {
+      unsigned char packed_4bit = 0;
+      if (offset + i * 2 >= n) break;
+      out_ptr[offset + 2 * i] = jblas::kernel::ref::nf4_dequantize(src[offset / 2 + i] >> 4, max);
+      out_ptr[offset + 2 * i + 1] = jblas::kernel::ref::nf4_dequantize(src[offset / 2 + i] & 0x0f, max);
     }
   }
 }

@@ -479,6 +479,8 @@ class StorageWeightS4ScaleFp32 : public WeightBase,
     int nk_scale = utils::updiv(KPad, Block);
     CorrectionType::resize(NPad, nk_scale, IsAsym,
                            true);  // create reduce space for weight which may use int8 compute type
+    this->mCStep = utils::updiv(NPad, Block);
+    this->mCSize = this->mCStep * KPad;
     mSize = InfoType::getSerializedSize() + QWeightType::getSerializedSize() + CorrectionType::getSerializedSize();
     return mSize;
   }
@@ -868,11 +870,13 @@ class WeightF4ScaleFp32 : public WeightS4ScaleFp32<_GemmCore_T, ISA_T, S4_CLIP> 
                    const int8_t* zero_points, void* ptr) {
     auto stor = reinterpret_cast<StorageWeight*>(ptr);
     int rawnk_scale = utils::updiv(K, stor->mBlockSize);
-    int nk_scale = utils::updiv(stor->mKPad, stor->mBlockSize);
+    int nk_scale = utils::updiv(stor->mNPad, stor->mBlockSize);
     assert(zero_points == NULL);
     // reorder scale
     auto trans_scale = utils::aligned_vector<float>(nk_scale * N, 0);
+    // dump_matrix(nk_scale, N, scales);
     kernel::ref::transpose2d(scales, trans_scale.data(), rawnk_scale, N, N, nk_scale);
+    // dump_matrix(N, nk_scale, trans_scale.data());
 #pragma omp parallel for
     for (int i = 0; i < N; i++) {  // padding copy
       std::memcpy(stor->mSPtr + i * nk_scale, trans_scale.data() + i * nk_scale, nk_scale * sizeof(scales[0]));
@@ -889,10 +893,18 @@ class WeightF4ScaleFp32 : public WeightS4ScaleFp32<_GemmCore_T, ISA_T, S4_CLIP> 
     if (stor->mHasReduce) {
       auto deq = utils::amalloc<float>((size_t)K * N);
       WeightS8ScaleFp32<_GemmCore_T, ISA_T>::unpackWeight(K, N, stor, deq, K);  // swap K&N due to transpose
-      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reduceWeight(K, N, stor->mBlockSize, deq, N, stor->mRPtr,
+      WeightS8ScaleFp32<_GemmCore_T, ISA_T>::reduceWeight(K, N, stor->mBlockSize, deq, K, stor->mRPtr,
                                                           stor->mNPad);  // swap K&N due to transpose
       utils::afree(deq);
     }
+  }
+
+  virtual JBLAS_CODE getScale(float** dstptr, int* dststep, int n_size, int k_size, int n_offset, int k_offset,
+                              const Param& _param) override {
+    auto wptr = reinterpret_cast<const StorageWeight*>(_param.packedW);
+    *dstptr = wptr->mSPtr + k_offset * wptr->mCStep + n_offset / wptr->mBlockSize;
+    *dststep = wptr->mCStep;
+    return JblasSuccess;
   }
 
   virtual inline JBLAS_CODE getWeight(float** dstptr, int* dststep, int k_size, int n_size, int k_offset, int n_offset,
@@ -917,7 +929,7 @@ class WeightF4ScaleFp32 : public WeightS4ScaleFp32<_GemmCore_T, ISA_T, S4_CLIP> 
           reinterpret_cast<utils::f4x2*>(bptr + i * KPad / 2), *dstptr + i * k_size, k_size / _GemmCore_T::PACK_ROW,
           _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW,
           _GemmCore_T::NTILE * _GemmCore_T::PACK_ROW, wptr->mSPtr, k_offset / _GemmCore_T::PACK_ROW,
-          wptr->mBlockSize / _GemmCore_T::PACK_ROW, NPad);
+          wptr->mBlockSize / _GemmCore_T::PACK_ROW, NPad, i);
     }
     // }
     *dststep = k_size;

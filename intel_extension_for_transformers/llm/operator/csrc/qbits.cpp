@@ -101,6 +101,16 @@ static torch::Tensor qbits_dropout_fwd(torch::Tensor& output, double p) { return
 
 static void qbits_dropout_bwd(torch::Tensor& grad, torch::Tensor& scale) { dropout_bwd(grad, scale); }
 
+static void ref_fp4_quantize(const torch::Tensor& A, torch::Tensor& absmax, torch::Tensor& out, int64_t blocksize,
+                             int64_t n) {
+  fp4_quantize_launcher(A, absmax, out, blocksize, n);
+}
+
+static void ref_fp4_dequantize(const torch::Tensor& A, torch::Tensor& absmax, torch::Tensor& out, int64_t blocksize,
+                               int64_t n) {
+  fp4_dequantize_launcher(A, absmax, out, blocksize, n);
+}
+
 TORCH_LIBRARY(weight_only_jblasop, m) {
   m.def("qbits_quantize", &qbits_quantize);
   m.def("qbits_linear", &qbits_linear);
@@ -111,4 +121,6 @@ TORCH_LIBRARY(weight_only_jblasop, m) {
 TORCH_LIBRARY(qbits_customop, m) {
   m.def("qbits_dropout_fwd", &qbits_dropout_fwd);
   m.def("qbits_dropout_bwd", &qbits_dropout_bwd);
+  m.def("ref_fp4_quantize", &ref_fp4_quantize);
+  m.def("ref_fp4_dequantize", &ref_fp4_dequantize);
 }
