@@ -67,22 +67,28 @@ void jblas_mmbf16(torch::Tensor& activation, torch::Tensor& weight, torch::Tenso
   if (initer.verbose) timer.start();
   using GEMMKernel = jblas::wrapper::gemm_default::amx_bf16::GemmKernelPackedWeightNN;
   static GEMMKernel kernel;
+
+  bool transpose = true;
+  int n = transpose ? weight.sizes()[0] : weight.sizes()[1];
+  int k = transpose ? weight.sizes()[1] : weight.sizes()[0];
+  auto packw = kernel.getWeightPtr()->createStorage(n, k);
+  auto pack_wei_tensor = torch::empty(packw.mSize, torch::kInt8);
+  packw.assign(pack_wei_tensor.data_ptr<int8_t>());
+  if (transpose) {
+    kernel.getWeightPtr()->packWeightTranspose(n, k,
+                                               {reinterpret_cast<jblas::utils::bf16*>(weight.data_ptr()), k, &packw});
+  } else {
+    kernel.getWeightPtr()->packWeight(n, k, {reinterpret_cast<jblas::utils::bf16*>(weight.data_ptr()), n, &packw});
+  }
+
   TORCH_CHECK(activation.dim() == 2, "Qbits: only support 2-dim activation in mmbf16.");
-  auto deseries_wei = jblas::prologue::gemm::PackedWeightParser::deserialBuffer(weight.data_ptr());
+  // auto deseries_wei = jblas::prologue::gemm::PackedWeightParser::deserialBuffer(weight.data_ptr());
   int m = output.sizes()[0];
-  int n = output.sizes()[1];
-  int k = activation.sizes()[1];
-  GEMMKernel::Arguments args{m,
-                             n,
-                             k,
-                             reinterpret_cast<jblas::utils::bf16*>(activation.data_ptr()),
-                             k,
-                             NULL,
-                             0,
-                             reinterpret_cast<jblas::prologue::gemm::StoragePackedWeight*>(deseries_wei),
-                             reinterpret_cast<jblas::utils::bf16*>(output.data_ptr()),
-                             n,
-                             NULL};
+  // int n = output.sizes()[1];
+  // int k = activation.sizes()[1];
+  GEMMKernel::Arguments args{m, n, k, reinterpret_cast<jblas::utils::bf16*>(activation.data_ptr()), k, NULL, 0,
+                             //  reinterpret_cast<jblas::prologue::gemm::StoragePackedWeight*>(deseries_wei),
+                             &packw, reinterpret_cast<jblas::utils::bf16*>(output.data_ptr()), n, NULL};
   kernel.compute(args);
   if (initer.verbose) {
     timer.stop();
@@ -95,22 +101,27 @@ void jblas_mmfp32_avx2(torch::Tensor& activation, torch::Tensor& weight, torch::
   if (initer.verbose) timer.start();
   using GEMMKernel = jblas::wrapper::gemm_default::avx2::GemmKernel;
   static GEMMKernel kernel;
+
+  bool transpose = true;
+  int n = transpose ? weight.sizes()[0] : weight.sizes()[1];
+  int k = transpose ? weight.sizes()[1] : weight.sizes()[0];
+  auto packw = kernel.getWeightPtr()->createStorage(n, k);
+  auto pack_wei_tensor = torch::empty(packw.mSize, torch::kInt8);
+  packw.assign(pack_wei_tensor.data_ptr<int8_t>());
+  if (transpose) {
+    kernel.getWeightPtr()->packWeightTranspose(n, k, {reinterpret_cast<float*>(weight.data_ptr()), k, &packw});
+  } else {
+    kernel.getWeightPtr()->packWeight(n, k, {reinterpret_cast<float*>(weight.data_ptr()), n, &packw});
+  }
+
   TORCH_CHECK(activation.dim() == 2, "Qbits: only support 2-dim activation in mmbf16.");
   auto deseries_wei = jblas::prologue::gemm::PackedWeightParser::deserialBuffer(weight.data_ptr());
   int m = output.sizes()[0];
-  int n = output.sizes()[1];
-  int k = activation.sizes()[1];
-  GEMMKernel::Arguments args{m,
-                             n,
-                             k,
-                             reinterpret_cast<float*>(activation.data_ptr()),
-                             k,
-                             NULL,
-                             0,
-                             reinterpret_cast<jblas::prologue::gemm::StoragePackedWeight*>(deseries_wei),
-                             reinterpret_cast<float*>(output.data_ptr()),
-                             n,
-                             NULL};
+  // int n = output.sizes()[1];
+  // int k = activation.sizes()[1];
+  GEMMKernel::Arguments args{m, n, k, reinterpret_cast<float*>(activation.data_ptr()), k, NULL, 0,
+                             //  reinterpret_cast<jblas::prologue::gemm::StoragePackedWeight*>(deseries_wei),
+                             &packw, reinterpret_cast<float*>(output.data_ptr()), n, NULL};
   kernel.compute(args);
   if (initer.verbose) {
     timer.stop();
