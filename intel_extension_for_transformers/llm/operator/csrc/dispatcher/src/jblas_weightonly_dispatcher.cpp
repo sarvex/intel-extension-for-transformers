@@ -13,7 +13,6 @@
 //  limitations under the License.
 #include "../include/jblas_weightonly_dispatcher.hpp"
 #include "../include/jblas_customop.hpp"
-#include "../include/dispatcher_utils.hpp"
 #include <ATen/core/TensorBody.h>
 #include <c10/util/Exception.h>
 #include <cassert>
@@ -38,17 +37,6 @@
   template <JBLAS_ISA _RT_ISA_T, class _GemmCore_T, template <class _T, JBLAS_ISA> class _PrologueA_T, \
             template <class _T, JBLAS_ISA> class _PrologueB_T, template <JBLAS_ISA> class _Epilogue_T> \
   class Launcher
-
-class env_initer {
- public:
-  env_initer() {
-    if (check_amx()) jblas::utils::request_perm_xtile_data();
-    verbose = std::getenv("QBITS_VERBOSE") != nullptr;
-    FLAGS_caffe2_log_level = 0;
-  }
-  bool verbose;
-};
-static env_initer initer;
 
 template <typename T>
 concept quant_PrologueA = requires {
@@ -75,7 +63,6 @@ concept int8_cmptype_kblock_Gemmcore =
 
 static void* jblas_workspace = nullptr;
 static int64_t workspace_size = 0;
-static dispatcher_utils::Timer timer;
 
 inline void set_nk(qbits_runtime_ctx* ctx, torch::Tensor* tensor) {
   ctx->n = ctx->transpose ? tensor->sizes()[0] : tensor->sizes()[1];

@@ -15,15 +15,17 @@
 #include "jblas/jit_blas_prologue.h"
 #include "jblas/jit_blas_utils.h"
 #include "jblas/jit_blas_wrapper.h"
+#include "../dispatcher/include/jblas_weightonly_dispatcher.hpp"
 
 torch::Tensor jblas_mmbf16_packwei(torch::Tensor& weight, bool transpose) {
+  if (initer.verbose) timer.start();
   using packKernel = jblas::wrapper::gemm_default::amx_bf16::GemmKernelPackedWeightNN;
   TORCH_CHECK(weight.dim() == 2, "Qbits: only support 2-dim weight in mmbf16_packwei.");
   static packKernel kernel;
   int n = transpose ? weight.sizes()[0] : weight.sizes()[1];
   int k = transpose ? weight.sizes()[1] : weight.sizes()[0];
   auto packw = kernel.getWeightPtr()->createStorage(n, k);
-  auto pack_wei_tensor = torch::zeros(packw.mSize, torch::kInt8);
+  auto pack_wei_tensor = torch::empty(packw.mSize, torch::kInt8);
   packw.assign(pack_wei_tensor.data_ptr<int8_t>());
   if (transpose) {
     kernel.getWeightPtr()->packWeightTranspose(n, k,
@@ -31,26 +33,38 @@ torch::Tensor jblas_mmbf16_packwei(torch::Tensor& weight, bool transpose) {
   } else {
     kernel.getWeightPtr()->packWeight(n, k, {reinterpret_cast<jblas::utils::bf16*>(weight.data_ptr()), n, &packw});
   }
+  if (initer.verbose) {
+    timer.stop();
+    auto cost_time = timer.get_elapsed_time();
+    LOG(INFO) << "QBits mmbf16-packwei verbose\nn:" << n << " k:" << k << " execute time:" << cost_time << "ms";
+  }
   return pack_wei_tensor;
 }
 
 torch::Tensor jblas_mmfp32_avx2_packwei(torch::Tensor& weight, bool transpose) {
+  if (initer.verbose) timer.start();
   using packKernel = jblas::wrapper::gemm_default::avx2::GemmKernel;
   static packKernel kernel;
   int n = transpose ? weight.sizes()[0] : weight.sizes()[1];
   int k = transpose ? weight.sizes()[1] : weight.sizes()[0];
   auto packw = kernel.getWeightPtr()->createStorage(n, k);
-  auto pack_wei_tensor = torch::zeros(packw.mSize, torch::kInt8);
+  auto pack_wei_tensor = torch::empty(packw.mSize, torch::kInt8);
   packw.assign(pack_wei_tensor.data_ptr<int8_t>());
   if (transpose) {
     kernel.getWeightPtr()->packWeightTranspose(n, k, {reinterpret_cast<float*>(weight.data_ptr()), k, &packw});
   } else {
     kernel.getWeightPtr()->packWeight(n, k, {reinterpret_cast<float*>(weight.data_ptr()), n, &packw});
   }
+  if (initer.verbose) {
+    timer.stop();
+    auto cost_time = timer.get_elapsed_time();
+    LOG(INFO) << "QBits mmfp32-avx2-packwei verbose\nn:" << n << " k:" << k << " execute time:" << cost_time << "ms";
+  }
   return pack_wei_tensor;
 }
 
 void jblas_mmbf16(torch::Tensor& activation, torch::Tensor& weight, torch::Tensor& output) {
+  if (initer.verbose) timer.start();
   using GEMMKernel = jblas::wrapper::gemm_default::amx_bf16::GemmKernelPackedWeightNN;
   static GEMMKernel kernel;
   TORCH_CHECK(activation.dim() == 2, "Qbits: only support 2-dim activation in mmbf16.");
@@ -70,9 +84,15 @@ void jblas_mmbf16(torch::Tensor& activation, torch::Tensor& weight, torch::Tenso
                              n,
                              NULL};
   kernel.compute(args);
+  if (initer.verbose) {
+    timer.stop();
+    auto cost_time = timer.get_elapsed_time();
+    LOG(INFO) << "QBits mmbf16 verbose\nm:" << m << " n:" << n << " k:" << k << " execute time:" << cost_time << "ms";
+  }
 }
 
 void jblas_mmfp32_avx2(torch::Tensor& activation, torch::Tensor& weight, torch::Tensor& output) {
+  if (initer.verbose) timer.start();
   using GEMMKernel = jblas::wrapper::gemm_default::avx2::GemmKernel;
   static GEMMKernel kernel;
   TORCH_CHECK(activation.dim() == 2, "Qbits: only support 2-dim activation in mmbf16.");
@@ -92,4 +112,10 @@ void jblas_mmfp32_avx2(torch::Tensor& activation, torch::Tensor& weight, torch::
                              n,
                              NULL};
   kernel.compute(args);
+  if (initer.verbose) {
+    timer.stop();
+    auto cost_time = timer.get_elapsed_time();
+    LOG(INFO) << "QBits mmfp32-avx2 verbose\nm:" << m << " n:" << n << " k:" << k << " execute time:" << cost_time
+              << "ms";
+  }
 }

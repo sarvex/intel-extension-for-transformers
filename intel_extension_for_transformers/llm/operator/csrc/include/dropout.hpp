@@ -11,6 +11,7 @@
 //  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //  See the License for the specific language governing permissions and
 //  limitations under the License.
+#pragma once
 #include "../dispatcher/include/jblas_weightonly_dispatcher.hpp"
 #include "jblas/jit_blas_utils.h"
 #include <ATen/core/TensorBody.h>

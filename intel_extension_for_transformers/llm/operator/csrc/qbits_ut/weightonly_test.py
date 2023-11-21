@@ -90,32 +90,36 @@ torch.ops.weight_only_jblasop.qbits_set_weightonly_workspace(workspace)
 #                             test(m, n, k, blocksize, compute_type,
 #                                  weight_type, trans, bias, src_dt, dst_dt)
 
-# act=torch.rand(8,4096,dtype=torch.bfloat16)
-# wei=torch.rand(11008,4096,dtype=torch.bfloat16)
-# ser_wei=torch.ops.weight_only_jblasop.qbits_mmbf16_packwei(wei,True)
-# print("packwei done")
-# wei = torch.transpose(wei, 0, 1)
-# ref=torch.matmul(act,wei)
-# tar=torch.zeros(8,11008,dtype=torch.bfloat16)
-# torch.ops.weight_only_jblasop.qbits_mmbf16(act,ser_wei,tar)
-# if torch.allclose(tar, ref, rtol=0.01):
-#     print("ok")
-# else:
-#     print(tar)
-#     print(ref)
-#     print("fail")
 
-act=torch.rand(8,4096,dtype=torch.float)
-wei=torch.rand(11008,4096,dtype=torch.float)
-ser_wei=torch.ops.weight_only_jblasop.qbits_mmfp32_avx2_packwei(wei,True)
+m=8192
+n=11008
+k=4096
+act=torch.rand(m,k,dtype=torch.bfloat16)
+wei=torch.rand(n,k,dtype=torch.bfloat16)
+ser_wei=torch.ops.weight_only_jblasop.qbits_mmbf16_packwei(wei,True)
 print("packwei done")
 wei = torch.transpose(wei, 0, 1)
 ref=torch.matmul(act,wei)
-tar=torch.zeros(8,11008,dtype=torch.float)
-torch.ops.weight_only_jblasop.qbits_mmfp32_avx2(act,ser_wei,tar)
+tar=torch.zeros(m,n,dtype=torch.bfloat16)
+torch.ops.weight_only_jblasop.qbits_mmbf16(act,ser_wei,tar)
 if torch.allclose(tar, ref, rtol=0.01):
     print("ok")
 else:
     print(tar)
     print(ref)
     print("fail")
+
+# act=torch.rand(m,k,dtype=torch.float)
+# wei=torch.rand(n,k,dtype=torch.float)
+# ser_wei=torch.ops.weight_only_jblasop.qbits_mmfp32_avx2_packwei(wei,True)
+# print("packwei done")
+# wei = torch.transpose(wei, 0, 1)
+# ref=torch.matmul(act,wei)
+# tar=torch.zeros(m,n,dtype=torch.float)
+# torch.ops.weight_only_jblasop.qbits_mmfp32_avx2(act,ser_wei,tar)
+# if torch.allclose(tar, ref, rtol=0.01):
+#     print("ok")
+# else:
+#     print(tar)
+#     print(ref)
+#     print("fail")

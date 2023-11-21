@@ -15,6 +15,7 @@
 #include <ATen/core/TensorBody.h>
 #include <torch/torch.h>
 #include "jblas/jit_blas_weight_compression.h"
+#include "dispatcher_utils.hpp"
 #include <string.h>
 #include <assert.h>
 #include <iostream>
@@ -24,6 +25,18 @@ inline bool check_avx512_vnni() { return jblas::utils::parallel::CpuDevice::getI
 inline bool check_avx_vnni() { return jblas::utils::parallel::CpuDevice::getInstance()->AVX_VNNI(); };
 inline bool check_avx512f() { return jblas::utils::parallel::CpuDevice::getInstance()->AVX512F(); }
 inline bool check_avx2() { return jblas::utils::parallel::CpuDevice::getInstance()->AVX2(); }
+
+class env_initer {
+ public:
+  env_initer() {
+    if (check_amx()) jblas::utils::request_perm_xtile_data();
+    verbose = std::getenv("QBITS_VERBOSE") != nullptr;
+    FLAGS_caffe2_log_level = 0;
+  }
+  bool verbose;
+};
+static env_initer initer;
+static dispatcher_utils::Timer timer;
 
 enum QBITS_TASK {
   QBITS_QUANTIZE,
