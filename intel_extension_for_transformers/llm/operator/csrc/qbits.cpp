@@ -13,6 +13,7 @@
 //  limitations under the License.
 #include "dispatcher/include/jblas_weightonly_dispatcher.hpp"
 #include "include/dropout.hpp"
+#include "include/jblas_mmbf16.hpp"
 #include <ATen/core/TensorBody.h>
 #include <c10/core/ScalarType.h>
 #include <c10/util/BFloat16.h>
@@ -101,11 +102,29 @@ static torch::Tensor qbits_dropout_fwd(torch::Tensor& output, double p) { return
 
 static void qbits_dropout_bwd(torch::Tensor& grad, torch::Tensor& scale) { dropout_bwd(grad, scale); }
 
+static torch::Tensor qbits_mmbf16_packwei(torch::Tensor& weight, bool transpose) {
+  return jblas_mmbf16_packwei(weight, transpose);
+}
+static void qbits_mmbf16(torch::Tensor& activation, torch::Tensor& weight, torch::Tensor& output) {
+  return jblas_mmbf16(activation, weight, output);
+}
+
+static torch::Tensor qbits_mmfp32_avx2_packwei(torch::Tensor& weight, bool transpose) {
+  return jblas_mmfp32_avx2_packwei(weight, transpose);
+}
+static void qbits_mmfp32_avx2(torch::Tensor& activation, torch::Tensor& weight, torch::Tensor& output) {
+  return jblas_mmfp32_avx2(activation, weight, output);
+}
+
 TORCH_LIBRARY(weight_only_jblasop, m) {
   m.def("qbits_quantize", &qbits_quantize);
   m.def("qbits_linear", &qbits_linear);
   m.def("qbits_dequantize", &qbits_dequantize);
   m.def("qbits_set_weightonly_workspace", &qbits_set_weightonly_workspace);
+  m.def("qbits_mmbf16_packwei", &qbits_mmbf16_packwei);
+  m.def("qbits_mmbf16", &qbits_mmbf16);
+  m.def("qbits_mmfp32_avx2_packwei", &qbits_mmfp32_avx2_packwei);
+  m.def("qbits_mmfp32_avx2", &qbits_mmfp32_avx2);
 }
 
 TORCH_LIBRARY(qbits_customop, m) {

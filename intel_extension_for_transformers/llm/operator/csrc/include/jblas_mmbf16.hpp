@@ -18,3 +18,6 @@
 
 torch::Tensor jblas_mmbf16_packwei(torch::Tensor& weight, bool transpose);
 void jblas_mmbf16(torch::Tensor& activation, torch::Tensor& weight, torch::Tensor& output);
+
+torch::Tensor jblas_mmfp32_avx2_packwei(torch::Tensor& weight, bool transpose);
+void jblas_mmfp32_avx2(torch::Tensor& activation, torch::Tensor& weight, torch::Tensor& output);
