@@ -120,9 +120,9 @@ class _BaseQBitsAutoModelClass:
             if load_in_4bit:
                 if quantization_config is None:
                     if use_llm_runtime:
-                        # use wint4_sfp32_cint8_g32_sym by default
+                        # use wnf4_sfp32_cfp32_g32_sym by default
                         quantization_config = WeightOnlyQuantConfig(
-                            compute_dtype="int8", weight_dtype="int4"
+                            compute_dtype="fp32", weight_dtype="nf4"
                         )
                     else:
                         quantization_config = WeightOnlyQuantConfig(
