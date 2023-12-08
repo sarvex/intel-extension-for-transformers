@@ -229,13 +229,13 @@ def parse_args():
             "If passed, LLM loading time and RAM consumption will be benefited."
         ),
     )
-    
+
     ### DDP mode config
     parser.add_argument(
         "--local_rank",
         type=int, default=-1,
         help="Automatic DDP Multi-GPU argument, do not modify")
-    
+
     # pruning config
     parser.add_argument(
         "--do_prune", action="store_true",
@@ -263,7 +263,7 @@ def parse_args():
     parser.add_argument(
         "--trust_remote_code", default=True,
         help="Transformers parameter: use the external repo")
-    
+
     # Evaluation config
     parser.add_argument("--tasks", default=["lambada_openai"],
         help="Usually chosen with ['lambada_openai','hellaswag','winogrande','piqa']",
@@ -272,19 +272,17 @@ def parse_args():
         help=" fp16")
     parser.add_argument("--use_accelerate", action='store_true',
         help="Usually use to accelerate evaluation for large models")
-    
+
     args = parser.parse_args()
-        
-    # Sanity checks
+
     if args.calibration_dataset_name is None and args.train_file is None and args.validation_file is None:
         raise ValueError("Need either a dataset name or a training/validation file.")
-    else:
-        if args.train_file is not None:
-            extension = args.train_file.split(".")[-1]
-            assert extension in ["csv", "json", "txt"], "`train_file` should be a csv, json or txt file."
-        if args.validation_file is not None:
-            extension = args.validation_file.split(".")[-1]
-            assert extension in ["csv", "json", "txt"], "`validation_file` should be a csv, json or txt file."
+    if args.train_file is not None:
+        extension = args.train_file.split(".")[-1]
+        assert extension in ["csv", "json", "txt"], "`train_file` should be a csv, json or txt file."
+    if args.validation_file is not None:
+        extension = args.validation_file.split(".")[-1]
+        assert extension in ["csv", "json", "txt"], "`validation_file` should be a csv, json or txt file."
 
     if args.push_to_hub:
         assert args.output_dir is not None, "Need an `output_dir` to create a repo when `--push_to_hub` is passed."
@@ -307,13 +305,13 @@ def main():
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_clm_no_trainer", args)
-    
+
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
-    
+
     if args.calibration_dataset_name is not None:
         # Downloading and loading a dataset from the hub.i
         if "wiki" in args.calibration_dataset_name:
@@ -357,7 +355,7 @@ def main():
                 split=f"train[{args.validation_split_percentage}%:]",
                 **dataset_args,
             )
-            
+
     # See more about loading any type of standard or custom dataset (from files, python dict, pandas DataFrame, etc) at
     # https://huggingface.co/docs/datasets/loading_datasets.html.
 
@@ -375,8 +373,8 @@ def main():
         config = CONFIG_MAPPING[args.model_type]()
         logger.warning("You are instantiating a new config instance from scratch.")
 
-    is_llama = bool("llama" in args.model_name_or_path)
-    is_t5 = bool("t5" in args.model_name_or_path)
+    is_llama = "llama" in args.model_name_or_path
+    is_t5 = "t5" in args.model_name_or_path
     if args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, use_fast=not args.use_slow_tokenizer)
     elif args.model_name_or_path:
@@ -398,12 +396,12 @@ def main():
                 )
         else:
             model = AutoModelForCausalLM.from_pretrained(
-                    args.model_name_or_path,
-                    from_tf=bool(".ckpt" in args.model_name_or_path),
-                    config=config,
-                    trust_remote_code=args.trust_remote_code,
-                    low_cpu_mem_usage=args.low_cpu_mem_usage,
-                    )
+                args.model_name_or_path,
+                from_tf=".ckpt" in args.model_name_or_path,
+                config=config,
+                trust_remote_code=args.trust_remote_code,
+                low_cpu_mem_usage=args.low_cpu_mem_usage,
+            )
 
     else:
         logger.info("Training new model from scratch")
@@ -426,6 +424,7 @@ def main():
 
     def tokenize_function(examples):
         return tokenizer(examples[text_column_name], max_length=args.max_length, truncation=True) #padding
+
     #   return tokenizer(examples[text_column_name])
 
     if RANK in {-1, 0}:
@@ -488,9 +487,9 @@ def main():
             load_from_cache_file=not args.overwrite_cache,
             desc=f"Grouping texts in chunks of {block_size}",
         )
-        
+
     train_dataset = lm_datasets["train"]
-    
+
     # DataLoaders creation:
     train_dataset = train_dataset.shuffle(seed=42).select(range(128))
     total_batch_size = args.per_device_train_batch_size
@@ -502,13 +501,13 @@ def main():
     else:
         train_dataloader = DataLoader(
                 train_dataset, shuffle=False, collate_fn=default_data_collator, batch_size=args.per_device_train_batch_size)
-        
+
     logger.info("***** Running pruning *****")
     logger.info(f"  Num examples = {len(train_dataset)}")
     # logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.per_device_train_batch_size}")
     logger.info(f"  Total train/prune batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
-    
+
     if not args.auto_config:
         pruning_configs=[
             {
@@ -533,32 +532,32 @@ def main():
         target_sparsity=args.target_sparsity,
         pattern=args.pruning_pattern,
     )
-    
+
     device = args.device
     if device != 'cpu':
-        device = "cuda:"+str(device)
-        
+        device = f"cuda:{str(device)}"
+
     if args.do_prune:
         torch.backends.cuda.matmul.allow_tf32 = False
         torch.backends.cudnn.allow_tf32 = False
         use_cache = model.config.use_cache
         model.config.use_cache = False
-       
+
         pruning = prepare_pruning(model, configs, dataloader=train_dataloader, device=device)
         model.config.use_cache = use_cache
-        
+
     if args.output_dir is not None:
         ###TODO set ddp save method
         output_dir = args.output_dir
         model.save_pretrained(output_dir)
         tokenizer.save_pretrained(output_dir)
         logger.info(f"The model has been exported to {output_dir}")
-        
+
     if device != 'cpu':
         model = model.to(device)
-        logger.info(f"*****  Evaluation in GPU mode.  *****")
+        logger.info("*****  Evaluation in GPU mode.  *****")
     else:
-        logger.info(f"*****  Evaluation in CPU mode.  *****")
+        logger.info("*****  Evaluation in CPU mode.  *****")
     model.eval()
 
     model_name = args.model_name_or_path
